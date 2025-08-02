@@ -5,8 +5,6 @@ import {
   Home,
   Inbox,
   Search,
-  Settings,
-  User,
   BarChart3,
   Users,
   CreditCard,
@@ -76,19 +74,7 @@ const secondaryItems = [
   },
 ];
 
-// Settings and account items
-const accountItems = [
-  {
-    title: "Settings",
-    url: "/app/settings",
-    icon: Settings,
-  },
-  {
-    title: "Profile",
-    url: "/app/profile",
-    icon: User,
-  },
-];
+// Removed settings and account items
 
 export function AppSidebar() {
   const user = useCurrentUser();
@@ -148,49 +134,10 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
 
-        <SidebarSeparator />
 
-        {/* Account Items */}
-        <SidebarGroup>
-          <SidebarGroupLabel>Account</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {accountItems.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild>
-                    <Link href={item.url}>
-                      <item.icon className="h-4 w-4" />
-                      <span>{item.title}</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter>
-        {user && (
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton asChild>
-                <Link href="/app/profile" className="flex items-center gap-2">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted">
-                    <User className="h-4 w-4" />
-                  </div>
-                  <div className="flex flex-col text-left">
-                    <span className="text-sm font-medium">{user.name}</span>
-                    <span className="text-xs text-muted-foreground">
-                      {user.email}
-                    </span>
-                  </div>
-                </Link>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
-        )}
-      </SidebarFooter>
+      <SidebarFooter />
     </Sidebar>
   );
 }
