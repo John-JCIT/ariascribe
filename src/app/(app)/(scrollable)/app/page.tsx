@@ -1,3 +1,5 @@
+"use client";
+
 import { Card } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
@@ -16,8 +18,25 @@ import {
 } from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { useFeatureFlag } from "@/config/feature-flags";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { ClinicalDashboard } from "@/components/dashboard/ClinicalDashboard";
 
 export default function AppPage() {
+  const user = useCurrentUser();
+  const hasClinicalDashboard = useFeatureFlag('clinical-dashboard');
+  
+  // Show clinical dashboard if user is authenticated and feature is enabled
+  if (user && hasClinicalDashboard) {
+    return (
+      <ClinicalDashboard 
+        clinicianId={user.id} 
+        className="vertical space-y-6"
+      />
+    );
+  }
+
+  // Fallback to original dashboard
   return (
     <div className="vertical space-y-8">
       {/* Header */}

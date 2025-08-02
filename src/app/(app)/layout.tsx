@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import {
   BeautifulOnboarder,
   type OnboardingStep,
@@ -10,6 +11,7 @@ import { APP_NAME } from "@/config/config";
 import { userHotkeys } from "@/config/hotkeys";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useIsImpersonating } from "@/hooks/useIsImpersonating";
+import { logEnabledFeatures } from "@/config/feature-flags";
 
 // Define steps for onboarding
 const onboardingSteps: OnboardingStep[] = [
@@ -45,6 +47,14 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const user = useCurrentUser();
   const { isImpersonating } = useIsImpersonating();
   const showOnboarding = user && !user.onboarded && !isImpersonating;
+  
+  // Log enabled clinical features in development
+  React.useEffect(() => {
+    if (process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_LOG_FEATURE_FLAGS === 'true') {
+      logEnabledFeatures();
+    }
+  }, []);
+  
   return (
     <>
       {/* global hotkeys that apply only when user is logged in */}
