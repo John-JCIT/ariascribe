@@ -1,0 +1,314 @@
+openapi: 3.1.0
+info:
+  title: Aria Scribe Public API
+  version: 0.1.0
+  description: >-
+    **Public‑facing endpoints** that a browser or mobile client may call directly.
+    All requests require a short‑lived **Bearer JWT** issued by the `/auth/login`
+    flow, passed via the `Authorization: Bearer <token>` header **or** an
+    http‑only cookie.  No service‑level keys or internal routes are included.
+servers:
+  - url: https://api.ariascribe.com/v1
+security:
+  - BearerAuth: []
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    Patient:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        practice_id:
+          type: string
+          format: uuid
+        first_name:
+          type: string
+        last_name:
+          type: string
+        dob:
+          type: string
+          format: date
+        medicare_no:
+          type: string
+        myhr_opt_in:
+          type: boolean
+      required: [id, practice_id, first_name, last_name]
+    ConsultationStatus:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [recording, processing, ready, archived]
+        started_at:
+          type: string
+          format: date-time
+        ended_at:
+          type: string
+          format: date-time
+  responses:
+    UnauthorizedError:
+      description: Access token missing or invalid
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              message:
+                type: string
+paths:
+  /auth/login:
+    post:
+      tags: [public]
+      summary: Authenticate clinician and receive JWTs
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+              required: [email, password]
+      responses:
+        '200':
+          description: JWT issued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token:
+                    type: string
+                  refresh_token:
+                    type: string
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+  /auth/refresh:
+    post:
+      tags: [public]
+      summary: Exchange refresh token for a new access token
+      responses:
+        '200':
+          description: New access token
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token:
+                    type: string
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+  /patients:
+    get:
+      tags: [public]
+      summary: List patients for current practice
+      parameters:
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 50
+        - in: query
+          name: offset
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: Array of patients
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Patient'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+    post:
+      tags: [public]
+      summary: Create a new patient
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/Patient'
+              required: [first_name, last_name]
+      responses:
+        '201':
+          description: Patient created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Patient'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+  /patients/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [public]
+      summary: Retrieve a single patient record
+      responses:
+        '200':
+          description: Patient object
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Patient'
+        '404':
+          description: Not found
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+    patch:
+      tags: [public]
+      summary: Update mutable patient fields
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Patient'
+      responses:
+        '200':
+          description: Updated patient
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Patient'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+    delete:
+      tags: [public]
+      summary: Delete patient (hard delete)
+      responses:
+        '204':
+          description: Deleted
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+  /consultations/start:
+    post:
+      tags: [public]
+      summary: Begin a new consultation and receive presigned upload URL for audio
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                patient_id:
+                  type: string
+                  format: uuid
+      responses:
+        '201':
+          description: Consultation created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  consultation_id:
+                    type: string
+                    format: uuid
+                  upload_url:
+                    type: string
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+  /consultations/{id}/status:
+    get:
+      tags: [public]
+      summary: Poll processing status of a consultation
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Consultation status object
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConsultationStatus'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+  /notes/generate:
+    post:
+      tags: [public]
+      summary: Generate clinical note from consultation transcript
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                consultation_id:
+                  type: string
+                  format: uuid
+      responses:
+        '202':
+          description: Generation queued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  document_id:
+                    type: string
+                    format: uuid
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+  /billing/mbs-suggest:
+    post:
+      tags: [public]
+      summary: Suggest MBS items for a consultation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                consultation_id:
+                  type: string
+                  format: uuid
+      responses:
+        '200':
+          description: List of suggested MBS items
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    mbs_item:
+                      type: string
+                    confidence:
+                      type: number
+                      format: float
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
