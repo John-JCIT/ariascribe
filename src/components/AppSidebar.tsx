@@ -26,6 +26,7 @@ import {
   SidebarSeparator,
 } from "@/components/ui/sidebar";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { ModeBadge } from "@/components/ModeBadge";
 import Link from "next/link";
 
 // Clinical navigation items (Phase 1)
@@ -106,10 +107,13 @@ export function AppSidebar() {
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
             <Stethoscope className="h-4 w-4" />
           </div>
-          <div className="flex flex-col">
+          <div className="flex flex-col flex-1">
             <span className="text-sm font-semibold">AriaScribe</span>
             <span className="text-xs text-muted-foreground">Clinical Dashboard</span>
           </div>
+        </div>
+        <div className="px-4 pb-3 pt-1">
+          <ModeBadge className="w-fit" />
         </div>
       </SidebarHeader>
 
