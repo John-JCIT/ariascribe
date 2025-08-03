@@ -2,7 +2,7 @@
 
 import { Logo } from "./Logo";
 import { AppHeaderUser } from "./HeaderUser";
-import { blogLink, chatLink, homeLink } from "@/config/links";
+import { chatLink } from "@/config/links";
 import { useKitzeUI } from "@/components/KitzeUIContext";
 import { ThemeSwitchMinimalNextThemes } from "@/components/ThemeSwitchMinimalNextThemes";
 import { HeaderCustomized } from "@/components/core/HeaderCustomized";
@@ -11,8 +11,8 @@ import { HeaderLinks } from "@/components/core/HeaderLinks";
 export default function AppHeader() {
   const { isMobile } = useKitzeUI();
 
-  // Links are filtered inside the respective components
-  const userLinks = [homeLink, blogLink];
+  // Remove unnecessary links from user dropdown - users are already in the app
+  const userLinks: any[] = [];
   const headerLinks = [chatLink];
 
   return (

@@ -11,7 +11,7 @@ import { APP_NAME } from "@/config/config";
 import { userHotkeys } from "@/config/hotkeys";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useIsImpersonating } from "@/hooks/useIsImpersonating";
-import { logEnabledFeatures } from "@/config/feature-flags";
+
 
 // Define steps for onboarding
 const onboardingSteps: OnboardingStep[] = [
@@ -48,12 +48,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { isImpersonating } = useIsImpersonating();
   const showOnboarding = user && !user.onboarded && !isImpersonating;
   
-  // Log enabled clinical features in development
-  React.useEffect(() => {
-    if (process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_LOG_FEATURE_FLAGS === 'true') {
-      logEnabledFeatures();
-    }
-  }, []);
+  // Clinical dashboard is now the default - no feature flag logging needed
   
   return (
     <>

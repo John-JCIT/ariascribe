@@ -1,18 +1,13 @@
 /**
  * Feature Flags for Aria Scribe Clinical Features
  * 
- * This system allows us to safely deploy new clinical features
- * while keeping them disabled in production until ready.
+ * Phase 1 clinical features (navigation, dashboard, patient panel) are now 
+ * the default experience and no longer require feature flags.
  * 
- * All flags default to FALSE for safety.
+ * This system is used for upcoming features in Phase 2 and 3.
  */
 
 export const FEATURE_FLAGS = {
-  // Phase 1: Core Clinical Dashboard
-  'clinical-navigation': process.env.NEXT_PUBLIC_ENABLE_CLINICAL_NAV === 'true',
-  'clinical-dashboard': process.env.NEXT_PUBLIC_ENABLE_CLINICAL_DASHBOARD === 'true',
-  'patient-consultation-panel': process.env.NEXT_PUBLIC_ENABLE_PATIENT_PANEL === 'true',
-  
   // Phase 2: EHR Integration (for future use)
   'ehr-integration': process.env.NEXT_PUBLIC_ENABLE_EHR_INTEGRATION === 'true',
   'best-practice-sync': process.env.NEXT_PUBLIC_ENABLE_BP_SYNC === 'true',
@@ -44,24 +39,25 @@ export function getEnabledFeatures(): FeatureFlag[] {
 }
 
 /**
- * Check if any clinical features are enabled
+ * Check if any experimental clinical features are enabled
+ * (Phase 1 features are now always enabled)
  */
-export function hasClinicalFeaturesEnabled(): boolean {
-  return FEATURE_FLAGS['clinical-navigation'] || 
-         FEATURE_FLAGS['clinical-dashboard'] || 
-         FEATURE_FLAGS['patient-consultation-panel'];
+export function hasExperimentalFeaturesEnabled(): boolean {
+  return FEATURE_FLAGS['ehr-integration'] || 
+         FEATURE_FLAGS['best-practice-sync'] ||
+         FEATURE_FLAGS['audio-recording'] ||
+         FEATURE_FLAGS['ai-note-generation'];
 }
 
 /**
- * Development helper to log enabled features
+ * Development helper to log enabled experimental features
  */
 export function logEnabledFeatures(): void {
   if (process.env.NODE_ENV === 'development') {
     const enabled = getEnabledFeatures();
+    console.log('🏥 Aria Scribe: Clinical dashboard is default');
     if (enabled.length > 0) {
-      console.log('🏥 Aria Scribe Clinical Features Enabled:', enabled);
-    } else {
-      console.log('🏥 Aria Scribe: Using standard dashboard (no clinical features enabled)');
+      console.log('🧪 Experimental Features Enabled:', enabled);
     }
   }
 }
