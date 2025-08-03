@@ -115,3 +115,220 @@ model UTImage {
   @@index([userId])
   @@map("ut_images")
 }
+
+// ============================================================================
+// CLINICAL MODELS - Phase 2A Standalone Mode
+// ============================================================================
+
+model Tenant {
+  id                String   @id @default(uuid())
+  name              String
+  operatingMode     OperatingMode @default(STANDALONE)
+  isDedicatedDb     Boolean  @default(false)
+  dbConnectionUri   String?
+  adminCanChangeMode Boolean @default(true)
+  requiresApproval  Boolean  @default(false)
+  
+  // Feature flags
+  features          Json     @default("{\"manualExport\": true, \"patientManagement\": true, \"ehrSync\": false}")
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  // Relations
+  patients          Patient[]
+  consultations     Consultation[]
+  clinicalNotes     ClinicalNote[]
+  exports           Export[]
+  
+  @@map("tenants")
+}
+
+model Patient {
+  id              String   @id @default(uuid())
+  tenantId        String
+  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  
+  // External references
+  ehrPatientId    String?  // populated after EHR migration
+  source          PatientSource @default(ARIA_SCRIBE)
+  
+  // Demographics
+  firstName       String
+  lastName        String
+  dateOfBirth     DateTime?
+  gender          Gender?
+  
+  // Contact info
+  phone           String?
+  email           String?
+  address         Json?    // Flexible address structure
+  
+  // Clinical metadata
+  lastConsultation DateTime?
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  // Relations
+  consultations   Consultation[]
+  clinicalNotes   ClinicalNote[]
+  
+  @@index([tenantId])
+  @@index([tenantId, lastName, firstName])
+  @@map("patients")
+}
+
+model Consultation {
+  id              String   @id @default(uuid())
+  tenantId        String
+  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  patientId       String
+  patient         Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  
+  // Session metadata
+  mode            OperatingMode
+  status          ConsultationStatus @default(READY)
+  
+  // Recording data
+  recordingStartTime DateTime?
+  recordingEndTime   DateTime?
+  audioFileUrl       String?
+  
+  // Processing data
+  transcriptionText  String?
+  selectedTemplate   String?
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  // Relations
+  clinicalNotes   ClinicalNote[]
+  exports         Export[]
+  
+  @@index([tenantId])
+  @@index([tenantId, patientId])
+  @@index([tenantId, status])
+  @@map("consultations")
+}
+
+model ClinicalNote {
+  id              String   @id @default(uuid())
+  tenantId        String
+  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  patientId       String
+  patient         Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  consultationId  String?
+  consultation    Consultation? @relation(fields: [consultationId], references: [id], onDelete: SetNull)
+  
+  // Note content
+  title           String
+  content         String   // Markdown format
+  noteType        NoteType @default(PROGRESS)
+  template        String?
+  
+  // Status and workflow
+  status          NoteStatus @default(DRAFT)
+  
+  // AI/Transcription metadata
+  generatedFromAudio Boolean @default(false)
+  transcriptionId    String?
+  aiConfidence       Float?
+  manuallyEdited     Boolean @default(false)
+  
+  // Timestamps
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  signedAt        DateTime?
+  
+  @@index([tenantId])
+  @@index([tenantId, patientId])
+  @@index([tenantId, status])
+  @@map("clinical_notes")
+}
+
+model Export {
+  id              String   @id @default(uuid())
+  tenantId        String
+  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  consultationId  String
+  consultation    Consultation @relation(fields: [consultationId], references: [id], onDelete: Cascade)
+  
+  // Export metadata
+  format          ExportFormat
+  filePath        String?  // Local file path or cloud URL
+  fileName        String
+  fileSize        Int?     // bytes
+  
+  // Status
+  status          ExportStatus @default(PENDING)
+  error           String?
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@index([tenantId])
+  @@index([tenantId, consultationId])
+  @@map("exports")
+}
+
+// ============================================================================
+// ENUMS
+// ============================================================================
+
+enum OperatingMode {
+  STANDALONE
+  EHR_INTEGRATED
+}
+
+enum PatientSource {
+  ARIA_SCRIBE
+  EHR
+  IMPORTED
+}
+
+enum Gender {
+  M
+  F
+  OTHER
+  UNKNOWN
+}
+
+enum ConsultationStatus {
+  READY
+  RECORDING
+  PROCESSING
+  REVIEW
+  COMPLETE
+  ERROR
+}
+
+enum NoteType {
+  PROGRESS
+  SOAP
+  ASSESSMENT
+  PLAN
+  REFERRAL
+  OTHER
+}
+
+enum NoteStatus {
+  DRAFT
+  PENDING_REVIEW
+  FINAL
+  AMENDED
+  SIGNED
+}
+
+enum ExportFormat {
+  PDF
+  DOCX
+  TXT
+}
+
+enum ExportStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
