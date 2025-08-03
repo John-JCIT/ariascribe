@@ -18,7 +18,7 @@ import type {
   ClinicalNote
 } from '@/types/clinical';
 
-import type { DataStore, TenantConfig } from '@/server/datastore';
+import type { DataStore } from '@/server/datastore';
 import { getDataStore, getTenantConfig } from '@/server/datastore';
 
 /**
@@ -30,7 +30,7 @@ export class StandaloneClinicService implements EHRProvider {
   
   constructor(
     private tenantId: string,
-    private clinicianId: string = 'current-clinician' // TODO: Get from session/auth
+    private clinicianId?: string
   ) {}
 
   /**
@@ -45,6 +45,30 @@ export class StandaloneClinicService implements EHRProvider {
       this.dataStore = await getDataStore(tenantConfig);
     }
     return this.dataStore;
+  }
+
+  /**
+   * Get the current clinician ID, either from constructor or from session
+   */
+  private async getClinicianId(): Promise<string> {
+    if (this.clinicianId) {
+      return this.clinicianId;
+    }
+
+    try {
+      // Import getCurrentClinicianId dynamically to avoid circular dependencies
+      const { getCurrentClinicianId } = await import('./index');
+      const clinicianId = await getCurrentClinicianId();
+      
+      if (!clinicianId) {
+        throw new Error('No authenticated clinician found and no clinician ID provided');
+      }
+      
+      return clinicianId;
+    } catch (error) {
+      console.error('Failed to get clinician ID:', error);
+      throw new Error('Unable to determine clinician ID for data isolation');
+    }
   }
 
   // ============================================================================
@@ -89,7 +113,7 @@ export class StandaloneClinicService implements EHRProvider {
       return {
         connected: false,
         lastChecked: new Date(),
-        error: `Connection failed: ${error}`,
+        error: `Connection failed: ${String(error)}`,
       };
     }
   }
@@ -134,10 +158,20 @@ export class StandaloneClinicService implements EHRProvider {
   async createClinicalNote(patientId: string, note: Partial<ClinicalNote>): Promise<ClinicalNote> {
     const dataStore = await this.getDataStore();
     
+    // Validate note content - clinical notes must have meaningful content
+    if (!note.content || note.content.trim().length === 0) {
+      throw new Error('Clinical note content cannot be empty. Please provide meaningful note content.');
+    }
+    
+    // Additional validation for minimum content length
+    if (note.content.trim().length < 10) {
+      throw new Error('Clinical note content must be at least 10 characters long to ensure meaningful documentation.');
+    }
+    
     // Convert from EHRProvider interface to DataStore interface
     const noteInput = {
-      title: note.title || 'Clinical Note',
-      content: note.content || '',
+      title: note.title ?? 'Clinical Note',
+      content: note.content.trim(), // Use the validated content, trimmed of whitespace
       noteType: note.noteType,
       template: note.template,
       consultationId: note.consultationId,
@@ -151,6 +185,24 @@ export class StandaloneClinicService implements EHRProvider {
 
   async updateClinicalNote(noteId: string, updates: Partial<ClinicalNote>): Promise<ClinicalNote> {
     const dataStore = await this.getDataStore();
+    
+    // Validate note content if it's being updated
+    if (updates.content !== undefined) {
+      if (!updates.content || updates.content.trim().length === 0) {
+        throw new Error('Clinical note content cannot be empty. Please provide meaningful note content.');
+      }
+      
+      if (updates.content.trim().length < 10) {
+        throw new Error('Clinical note content must be at least 10 characters long to ensure meaningful documentation.');
+      }
+      
+      // Trim the content before updating
+      updates = {
+        ...updates,
+        content: updates.content.trim()
+      };
+    }
+    
     return dataStore.updateClinicalNote(noteId, updates);
   }
 
@@ -214,6 +266,14 @@ export class StandaloneClinicService implements EHRProvider {
   }
 
   /**
+   * Get recent patients ordered by last consultation or creation date
+   */
+  async getRecentPatients(limit?: number): Promise<PatientSummary[]> {
+    const dataStore = await this.getDataStore();
+    return dataStore.getRecentPatients(limit);
+  }
+
+  /**
    * Create a new consultation session
    */
   async createConsultation(consultation: {
@@ -254,6 +314,25 @@ export class StandaloneClinicService implements EHRProvider {
   }
 
   /**
+   * Get consultation data by ID
+   */
+  async getConsultation(consultationId: string): Promise<{
+    id: string;
+    patientId: string;
+    status: 'ready' | 'recording' | 'processing' | 'review' | 'complete' | 'error';
+    recordingStartTime?: Date;
+    recordingEndTime?: Date;
+    audioFileUrl?: string;
+    transcriptionText?: string;
+    selectedTemplate?: string;
+    createdAt: Date;
+    updatedAt: Date;
+  }> {
+    const dataStore = await this.getDataStore();
+    return dataStore.getConsultation(consultationId);
+  }
+
+  /**
    * Get dashboard statistics for the clinician
    */
   async getDashboardStats(date?: Date): Promise<{
@@ -266,7 +345,8 @@ export class StandaloneClinicService implements EHRProvider {
     averageConsultationTime: number;
   }> {
     const dataStore = await this.getDataStore();
-    return dataStore.getDashboardStats(this.clinicianId, date);
+    const clinicianId = await this.getClinicianId();
+    return dataStore.getDashboardStats(clinicianId, date);
   }
 
   /**
@@ -285,7 +365,8 @@ export class StandaloneClinicService implements EHRProvider {
     dismissible: boolean;
   }>> {
     const dataStore = await this.getDataStore();
-    return dataStore.getPendingActions(this.clinicianId);
+    const clinicianId = await this.getClinicianId();
+    return dataStore.getPendingActions(clinicianId);
   }
 }
 
@@ -305,13 +386,9 @@ export function createStandaloneClinicService(
 
 /**
  * Check if a tenant is configured for standalone mode
+ * @throws {Error} Throws if there's a configuration error accessing tenant config
  */
 export async function isStandaloneMode(tenantId: string): Promise<boolean> {
-  try {
-    const tenantConfig = await getTenantConfig(tenantId);
-    return tenantConfig?.operatingMode === 'standalone';
-  } catch (error) {
-    console.error(`Failed to check standalone mode for tenant ${tenantId}:`, error);
-    return false;
-  }
+  const tenantConfig = await getTenantConfig(tenantId);
+  return tenantConfig?.operatingMode === 'standalone';
 }

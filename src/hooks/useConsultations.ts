@@ -7,9 +7,32 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import type { ClinicalNote } from '@/types/clinical';
+import type { ClinicalNote, EHRProvider } from '@/types/clinical';
 import { getCurrentUserEHRService } from '@/services';
 import type { StandaloneClinicService } from '@/services/StandaloneClinicService';
+
+// ============================================================================
+// TYPE GUARDS AND INTERFACES
+// ============================================================================
+
+/**
+ * Interface for EHR services that support consultation management
+ */
+interface EHRServiceWithConsultations extends EHRProvider {
+  getConsultation(consultationId: string): Promise<ConsultationData>;
+  updateConsultation(consultationId: string, updates: Partial<ConsultationData>): Promise<ConsultationData>;
+}
+
+/**
+ * Type guard to check if an EHR service has consultation capabilities
+ */
+function hasConsultationSupport(service: EHRProvider): service is EHRServiceWithConsultations {
+  const serviceWithUnknownMethods = service as unknown as Record<string, unknown>;
+  return 'getConsultation' in service && 
+         typeof serviceWithUnknownMethods.getConsultation === 'function' &&
+         'updateConsultation' in service && 
+         typeof serviceWithUnknownMethods.updateConsultation === 'function';
+}
 
 interface ConsultationData {
   id: string;
@@ -96,9 +119,9 @@ export function useConsultation(options: UseConsultationOptions = {}): UseConsul
 
       const ehrService = await getCurrentUserEHRService();
       
-      // Check if this is a standalone service with consultation capability
-      if ('getConsultation' in ehrService) {
-        const consultationData = await (ehrService as any).getConsultation(consultationId);
+      // Check if this is a service with consultation capability using type guard
+      if (hasConsultationSupport(ehrService)) {
+        const consultationData = await ehrService.getConsultation(consultationId);
         setConsultation(consultationData);
 
         if (process.env.NODE_ENV === 'development') {
@@ -122,9 +145,11 @@ export function useConsultation(options: UseConsultationOptions = {}): UseConsul
     try {
       const ehrService = await getCurrentUserEHRService();
       
-      if ('updateConsultation' in ehrService) {
-        const updatedConsultation = await (ehrService as any).updateConsultation(consultationId, updates);
+      if (hasConsultationSupport(ehrService)) {
+        const updatedConsultation = await ehrService.updateConsultation(consultationId, updates);
         setConsultation(updatedConsultation);
+      } else {
+        throw new Error('Consultation management not supported by current EHR service');
       }
     } catch (err) {
       console.error('Error updating consultation:', err);

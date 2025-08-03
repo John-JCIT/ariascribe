@@ -60,7 +60,7 @@ export interface PatientSummary {
   // Basic demographics only
   firstName: string;
   lastName: string;
-  dateOfBirth: Date;
+  dateOfBirth: Date | null;
   age: number;
   gender: 'M' | 'F' | 'Other' | 'Unknown';
   
@@ -256,6 +256,7 @@ export interface EHRProvider {
   // Patient data
   getPatientSummary(patientId: string): Promise<PatientSummary>;
   getPatientContext(patientId: string): Promise<PatientContext>;
+  getRecentPatients(limit?: number): Promise<PatientSummary[]>;
   
   // Clinical notes
   createClinicalNote(patientId: string, note: Partial<ClinicalNote>): Promise<ClinicalNote>;

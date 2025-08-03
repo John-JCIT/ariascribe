@@ -2,7 +2,7 @@
  * Debug test to understand the column issue
  */
 
-import { PrismaClient } from './src/generated/prisma/index.js';
+import { PrismaClient } from '../../src/generated/prisma/index.js';
 
 const db = new PrismaClient();
 

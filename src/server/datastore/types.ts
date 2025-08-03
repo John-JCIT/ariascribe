@@ -45,6 +45,7 @@ export interface DataStore {
   createPatient(patient: CreatePatientInput): Promise<PatientSummary>;
   updatePatient(patientId: string, updates: UpdatePatientInput): Promise<PatientSummary>;
   searchPatients(query: string, limit?: number): Promise<PatientSummary[]>;
+  getRecentPatients(limit?: number): Promise<PatientSummary[]>;
   
   // Consultation management
   createConsultation(consultation: CreateConsultationInput): Promise<ConsultationRecord>;

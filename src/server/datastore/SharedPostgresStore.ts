@@ -6,7 +6,12 @@
  * we've defined in the database.
  */
 
-import type { PrismaClient } from '@/generated/prisma';
+import type { 
+  PrismaClient, 
+  Consultation, 
+  Patient, 
+  ClinicalNote as PrismaClinicalNote 
+} from '@/generated/prisma';
 import type {
   DataStore,
   ClinicalNoteInput,
@@ -21,8 +26,7 @@ import type {
 import {
   DataStoreError,
   PatientNotFoundError,
-  ConsultationNotFoundError,
-  RLSViolationError
+  ConsultationNotFoundError
 } from './types';
 
 import type {
@@ -43,8 +47,19 @@ import { db } from '@/server/db';
 export class SharedPostgresStore implements DataStore {
   constructor(
     private tenantConfig: TenantConfig,
-    private prisma: PrismaClient = db
+    private prisma: PrismaClient | typeof db = db
   ) {}
+
+  /**
+   * Sanitizes error messages to prevent sensitive data exposure
+   * Returns full error details in development, generic message in production
+   */
+  private sanitizeError(error: unknown): string {
+    if (process.env.NODE_ENV === 'development') {
+      return String(error);
+    }
+    return 'An internal error occurred';
+  }
 
   /**
    * Sets the tenant context for RLS before any operation
@@ -55,7 +70,7 @@ export class SharedPostgresStore implements DataStore {
       await this.prisma.$executeRaw`SELECT set_tenant(${this.tenantConfig.id}::uuid)`;
     } catch (error) {
       throw new DataStoreError(
-        `Failed to set tenant context: ${error}`,
+        `Failed to set tenant context: ${this.sanitizeError(error)}`,
         'TENANT_CONTEXT_ERROR',
         this.tenantConfig.id,
         error as Error
@@ -98,7 +113,7 @@ export class SharedPostgresStore implements DataStore {
       return consultations.map(consultation => this.mapConsultationToAppointment(consultation, clinicianId));
     } catch (error) {
       throw new DataStoreError(
-        `Failed to get today's appointments: ${error}`,
+        `Failed to get today's appointments: ${this.sanitizeError(error)}`,
         'APPOINTMENTS_FETCH_ERROR',
         this.tenantConfig.id,
         error as Error
@@ -123,7 +138,7 @@ export class SharedPostgresStore implements DataStore {
     } catch (error) {
       if (error instanceof ConsultationNotFoundError) throw error;
       throw new DataStoreError(
-        `Failed to get appointment: ${error}`,
+        `Failed to get appointment: ${this.sanitizeError(error)}`,
         'APPOINTMENT_FETCH_ERROR',
         this.tenantConfig.id,
         error as Error
@@ -140,11 +155,11 @@ export class SharedPostgresStore implements DataStore {
     try {
       await this.prisma.consultation.update({
         where: { id: appointmentId },
-        data: { status: consultationStatus },
+        data: { status: consultationStatus as 'READY' | 'RECORDING' | 'PROCESSING' | 'REVIEW' | 'COMPLETE' | 'ERROR' },
       });
     } catch (error) {
       throw new DataStoreError(
-        `Failed to update appointment status: ${error}`,
+        `Failed to update appointment status: ${this.sanitizeError(error)}`,
         'APPOINTMENT_UPDATE_ERROR',
         this.tenantConfig.id,
         error as Error
@@ -179,15 +194,15 @@ export class SharedPostgresStore implements DataStore {
 
       return {
         id: patient.id,
-        ehrPatientId: patient.ehrPatientId || patient.id, // Use internal ID if no EHR ID
+        ehrPatientId: patient.ehrPatientId ?? patient.id, // Use internal ID if no EHR ID
         ehrSystem: 'other', // Standalone mode
         firstName: patient.firstName,
         lastName: patient.lastName,
-        dateOfBirth: patient.dateOfBirth || new Date(),
+        dateOfBirth: patient.dateOfBirth ?? null,
         age: patient.dateOfBirth ? this.calculateAge(patient.dateOfBirth) : 0,
-        gender: (patient.gender as 'M' | 'F' | 'Other' | 'Unknown') || 'Unknown',
-        phone: patient.phone,
-        email: patient.email,
+        gender: (patient.gender === 'OTHER' ? 'Other' : patient.gender as 'M' | 'F' | 'Other' | 'Unknown') ?? 'Unknown',
+        phone: patient.phone ?? undefined,
+        email: patient.email ?? undefined,
         lastVisit: patient.consultations[0]?.createdAt,
         totalVisits: patient._count.consultations,
         lastSyncedAt: patient.updatedAt,
@@ -196,7 +211,7 @@ export class SharedPostgresStore implements DataStore {
     } catch (error) {
       if (error instanceof PatientNotFoundError) throw error;
       throw new DataStoreError(
-        `Failed to get patient summary: ${error}`,
+        `Failed to get patient summary: ${this.sanitizeError(error)}`,
         'PATIENT_FETCH_ERROR',
         this.tenantConfig.id,
         error as Error
@@ -236,9 +251,9 @@ export class SharedPostgresStore implements DataStore {
           consultationId: note.consultationId,
           title: note.title,
           content: note.content,
-          noteType: note.noteType?.toUpperCase() as any || 'PROGRESS',
+          noteType: (note.noteType?.toUpperCase() as 'PROGRESS' | 'SOAP' | 'ASSESSMENT' | 'PLAN' | 'REFERRAL' | 'OTHER') ?? 'PROGRESS',
           template: note.template,
-          generatedFromAudio: note.generatedFromAudio || false,
+          generatedFromAudio: note.generatedFromAudio ?? false,
           transcriptionId: note.transcriptionId,
           aiConfidence: note.aiConfidence,
         },
@@ -247,7 +262,7 @@ export class SharedPostgresStore implements DataStore {
       return this.mapPrismaNoteToClientNote(clinicalNote);
     } catch (error) {
       throw new DataStoreError(
-        `Failed to create clinical note: ${error}`,
+        `Failed to create clinical note: ${this.sanitizeError(error)}`,
         'NOTE_CREATE_ERROR',
         this.tenantConfig.id,
         error as Error
@@ -264,16 +279,16 @@ export class SharedPostgresStore implements DataStore {
         data: {
           title: updates.title,
           content: updates.content,
-          status: updates.status?.toUpperCase().replace('-', '_') as any,
+          status: updates.status?.toUpperCase().replace('-', '_') as 'DRAFT' | 'PENDING_REVIEW' | 'FINAL' | 'AMENDED' | 'SIGNED',
           manuallyEdited: true,
-          signedAt: updates.status === 'signed' ? new Date() : undefined,
+          signedAt: updates.status === 'signed' ? new Date() : (updates.status?.toUpperCase().replace('-', '_') === 'SIGNED' ? new Date() : undefined),
         },
       });
 
       return this.mapPrismaNoteToClientNote(clinicalNote);
     } catch (error) {
       throw new DataStoreError(
-        `Failed to update clinical note: ${error}`,
+        `Failed to update clinical note: ${this.sanitizeError(error)}`,
         'NOTE_UPDATE_ERROR',
         this.tenantConfig.id,
         error as Error
@@ -331,7 +346,7 @@ export class SharedPostgresStore implements DataStore {
       };
     } catch (error) {
       throw new DataStoreError(
-        `Failed to get dashboard stats: ${error}`,
+        `Failed to get dashboard stats: ${this.sanitizeError(error)}`,
         'DASHBOARD_STATS_ERROR',
         this.tenantConfig.id,
         error as Error
@@ -339,7 +354,7 @@ export class SharedPostgresStore implements DataStore {
     }
   }
 
-  async getPendingActions(clinicianId: string): Promise<PendingAction[]> {
+  async getPendingActions(_clinicianId: string): Promise<PendingAction[]> {
     await this.setTenantContext();
     
     try {
@@ -370,7 +385,7 @@ export class SharedPostgresStore implements DataStore {
       }));
     } catch (error) {
       throw new DataStoreError(
-        `Failed to get pending actions: ${error}`,
+        `Failed to get pending actions: ${this.sanitizeError(error)}`,
         'PENDING_ACTIONS_ERROR',
         this.tenantConfig.id,
         error as Error
@@ -392,18 +407,18 @@ export class SharedPostgresStore implements DataStore {
           firstName: patient.firstName,
           lastName: patient.lastName,
           dateOfBirth: patient.dateOfBirth,
-          gender: patient.gender?.toUpperCase() as any,
+          gender: patient.gender?.toUpperCase() as 'M' | 'F' | 'OTHER' | 'UNKNOWN',
           phone: patient.phone,
           email: patient.email,
           address: patient.address,
-          source: patient.source?.toUpperCase().replace('-', '_') as any || 'ARIA_SCRIBE',
+          source: (patient.source?.toUpperCase().replace('-', '_') as 'ARIA_SCRIBE' | 'EHR' | 'IMPORTED') ?? 'ARIA_SCRIBE',
         },
       });
 
       return this.getPatientSummary(newPatient.id);
     } catch (error) {
       throw new DataStoreError(
-        `Failed to create patient: ${error}`,
+        `Failed to create patient: ${this.sanitizeError(error)}`,
         'PATIENT_CREATE_ERROR',
         this.tenantConfig.id,
         error as Error
@@ -421,7 +436,7 @@ export class SharedPostgresStore implements DataStore {
           firstName: updates.firstName,
           lastName: updates.lastName,
           dateOfBirth: updates.dateOfBirth,
-          gender: updates.gender?.toUpperCase() as any,
+          gender: updates.gender?.toUpperCase() as 'M' | 'F' | 'OTHER' | 'UNKNOWN',
           phone: updates.phone,
           email: updates.email,
           address: updates.address,
@@ -431,7 +446,7 @@ export class SharedPostgresStore implements DataStore {
       return this.getPatientSummary(patientId);
     } catch (error) {
       throw new DataStoreError(
-        `Failed to update patient: ${error}`,
+        `Failed to update patient: ${this.sanitizeError(error)}`,
         'PATIENT_UPDATE_ERROR',
         this.tenantConfig.id,
         error as Error
@@ -439,7 +454,7 @@ export class SharedPostgresStore implements DataStore {
     }
   }
 
-  async searchPatients(query: string, limit: number = 20): Promise<PatientSummary[]> {
+  async searchPatients(query: string, limit = 20): Promise<PatientSummary[]> {
     await this.setTenantContext();
     
     try {
@@ -463,8 +478,34 @@ export class SharedPostgresStore implements DataStore {
       return Promise.all(patients.map(p => this.getPatientSummary(p.id)));
     } catch (error) {
       throw new DataStoreError(
-        `Failed to search patients: ${error}`,
+        `Failed to search patients: ${this.sanitizeError(error)}`,
         'PATIENT_SEARCH_ERROR',
+        this.tenantConfig.id,
+        error as Error
+      );
+    }
+  }
+
+  async getRecentPatients(limit = 20): Promise<PatientSummary[]> {
+    await this.setTenantContext();
+    
+    try {
+      const patients = await this.prisma.patient.findMany({
+        where: {
+          tenantId: this.tenantConfig.id,
+        },
+        take: limit,
+        orderBy: [
+          { lastConsultation: 'desc' },
+          { createdAt: 'desc' },
+        ],
+      });
+
+      return Promise.all(patients.map(p => this.getPatientSummary(p.id)));
+    } catch (error) {
+      throw new DataStoreError(
+        `Failed to fetch recent patients: ${this.sanitizeError(error)}`,
+        'RECENT_PATIENTS_ERROR',
         this.tenantConfig.id,
         error as Error
       );
@@ -483,7 +524,7 @@ export class SharedPostgresStore implements DataStore {
         data: {
           tenantId: this.tenantConfig.id,
           patientId: consultation.patientId,
-          mode: consultation.mode.toUpperCase().replace('-', '_') as any,
+          mode: consultation.mode.toUpperCase().replace('-', '_') as 'STANDALONE' | 'EHR_INTEGRATED',
           selectedTemplate: consultation.selectedTemplate,
           status: 'READY',
         },
@@ -495,17 +536,17 @@ export class SharedPostgresStore implements DataStore {
         patientId: newConsultation.patientId,
         mode: newConsultation.mode.toLowerCase().replace('_', '-') as 'standalone' | 'ehr-integrated',
         status: newConsultation.status.toLowerCase() as any,
-        recordingStartTime: newConsultation.recordingStartTime,
-        recordingEndTime: newConsultation.recordingEndTime,
-        audioFileUrl: newConsultation.audioFileUrl,
-        transcriptionText: newConsultation.transcriptionText,
-        selectedTemplate: newConsultation.selectedTemplate,
+        recordingStartTime: newConsultation.recordingStartTime ?? undefined,
+        recordingEndTime: newConsultation.recordingEndTime ?? undefined,
+        audioFileUrl: newConsultation.audioFileUrl ?? undefined,
+        transcriptionText: newConsultation.transcriptionText ?? undefined,
+        selectedTemplate: newConsultation.selectedTemplate ?? undefined,
         createdAt: newConsultation.createdAt,
         updatedAt: newConsultation.updatedAt,
       };
     } catch (error) {
       throw new DataStoreError(
-        `Failed to create consultation: ${error}`,
+        `Failed to create consultation: ${this.sanitizeError(error)}`,
         'CONSULTATION_CREATE_ERROR',
         this.tenantConfig.id,
         error as Error
@@ -520,7 +561,7 @@ export class SharedPostgresStore implements DataStore {
       const consultation = await this.prisma.consultation.update({
         where: { id: consultationId },
         data: {
-          status: updates.status?.toUpperCase() as any,
+          status: updates.status?.toUpperCase() as 'READY' | 'RECORDING' | 'PROCESSING' | 'REVIEW' | 'COMPLETE' | 'ERROR',
           recordingStartTime: updates.recordingStartTime,
           recordingEndTime: updates.recordingEndTime,
           audioFileUrl: updates.audioFileUrl,
@@ -532,7 +573,7 @@ export class SharedPostgresStore implements DataStore {
       return this.getConsultation(consultation.id);
     } catch (error) {
       throw new DataStoreError(
-        `Failed to update consultation: ${error}`,
+        `Failed to update consultation: ${this.sanitizeError(error)}`,
         'CONSULTATION_UPDATE_ERROR',
         this.tenantConfig.id,
         error as Error
@@ -558,18 +599,18 @@ export class SharedPostgresStore implements DataStore {
         patientId: consultation.patientId,
         mode: consultation.mode.toLowerCase().replace('_', '-') as 'standalone' | 'ehr-integrated',
         status: consultation.status.toLowerCase() as any,
-        recordingStartTime: consultation.recordingStartTime,
-        recordingEndTime: consultation.recordingEndTime,
-        audioFileUrl: consultation.audioFileUrl,
-        transcriptionText: consultation.transcriptionText,
-        selectedTemplate: consultation.selectedTemplate,
+        recordingStartTime: consultation.recordingStartTime ?? undefined,
+        recordingEndTime: consultation.recordingEndTime ?? undefined,
+        audioFileUrl: consultation.audioFileUrl ?? undefined,
+        transcriptionText: consultation.transcriptionText ?? undefined,
+        selectedTemplate: consultation.selectedTemplate ?? undefined,
         createdAt: consultation.createdAt,
         updatedAt: consultation.updatedAt,
       };
     } catch (error) {
       if (error instanceof ConsultationNotFoundError) throw error;
       throw new DataStoreError(
-        `Failed to get consultation: ${error}`,
+        `Failed to get consultation: ${this.sanitizeError(error)}`,
         'CONSULTATION_FETCH_ERROR',
         this.tenantConfig.id,
         error as Error
@@ -581,7 +622,7 @@ export class SharedPostgresStore implements DataStore {
   // PRIVATE HELPER METHODS
   // ============================================================================
 
-  private mapConsultationToAppointment(consultation: any, clinicianId: string): Appointment {
+  private mapConsultationToAppointment(consultation: Consultation & { patient: Patient }, clinicianId: string): Appointment {
     return {
       id: consultation.id,
       ehrAppointmentId: consultation.id,
@@ -593,11 +634,11 @@ export class SharedPostgresStore implements DataStore {
       status: this.mapConsultationStatusToAppointmentStatus(consultation.status),
       patientName: `${consultation.patient.firstName} ${consultation.patient.lastName}`,
       patientAge: consultation.patient.dateOfBirth ? this.calculateAge(consultation.patient.dateOfBirth) : 0,
-      patientGender: consultation.patient.gender || 'Unknown',
-      patientEmail: consultation.patient.email || '',
+      patientGender: (consultation.patient.gender === 'OTHER' ? 'Other' : consultation.patient.gender as 'M' | 'F' | 'Other' | 'Unknown') ?? 'Unknown',
+      patientEmail: consultation.patient.email ?? '',
       consultationId: consultation.id,
-      recordingStartTime: consultation.recordingStartTime,
-      recordingEndTime: consultation.recordingEndTime,
+              recordingStartTime: consultation.recordingStartTime ?? undefined,
+        recordingEndTime: consultation.recordingEndTime ?? undefined,
       createdAt: consultation.createdAt,
       updatedAt: consultation.updatedAt,
     };
@@ -626,27 +667,27 @@ export class SharedPostgresStore implements DataStore {
       'cancelled': 'ERROR',
       'no-show': 'ERROR',
     };
-    return statusMap[status] || 'READY';
+    return statusMap[status] ?? 'READY';
   }
 
-  private mapPrismaNoteToClientNote(note: any): ClinicalNote {
+  private mapPrismaNoteToClientNote(note: PrismaClinicalNote): ClinicalNote {
     return {
       id: note.id,
       ehrNoteId: note.id,
       patientId: note.patientId,
       clinicianId: 'current-clinician', // TODO: Get from session
-      consultationId: note.consultationId,
+      consultationId: note.consultationId ?? undefined,
       title: note.title,
       content: note.content,
-      noteType: note.noteType.toLowerCase() as any,
-      template: note.template,
-      status: note.status.toLowerCase().replace('_', '-') as any,
+      noteType: note.noteType.toLowerCase() as 'progress' | 'soap' | 'assessment' | 'plan' | 'referral' | 'other',
+      template: note.template ?? undefined,
+      status: note.status.toLowerCase().replace('_', '-') as 'draft' | 'pending-review' | 'final' | 'amended' | 'signed',
       createdAt: note.createdAt,
       updatedAt: note.updatedAt,
-      signedAt: note.signedAt,
+      signedAt: note.signedAt ?? undefined,
       generatedFromAudio: note.generatedFromAudio,
-      transcriptionId: note.transcriptionId,
-      aiConfidence: note.aiConfidence,
+      transcriptionId: note.transcriptionId ?? undefined,
+      aiConfidence: note.aiConfidence ?? undefined,
       manuallyEdited: note.manuallyEdited,
     };
   }
@@ -679,15 +720,15 @@ export class SharedPostgresStore implements DataStore {
     return age;
   }
 
-  private calculateAverageConsultationTime(consultations: any[]): number {
-    const completedWithTimes = consultations.filter(c => 
-      c.recordingStartTime && c.recordingEndTime
+  private calculateAverageConsultationTime(consultations: Consultation[]): number {
+    const completedWithTimes = consultations.filter((c): c is Consultation & { recordingStartTime: Date; recordingEndTime: Date } => 
+      c.recordingStartTime != null && c.recordingEndTime != null
     );
     
     if (completedWithTimes.length === 0) return 0;
     
     const totalMinutes = completedWithTimes.reduce((sum, c) => {
-      const duration = (new Date(c.recordingEndTime).getTime() - new Date(c.recordingStartTime).getTime()) / (1000 * 60);
+      const duration = (c.recordingEndTime.getTime() - c.recordingStartTime.getTime()) / (1000 * 60);
       return sum + duration;
     }, 0);
     

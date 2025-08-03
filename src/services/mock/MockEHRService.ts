@@ -194,6 +194,49 @@ export class MockEHRService implements EHRProvider {
     return context;
   }
 
+  async getRecentPatients(limit = 20): Promise<PatientSummary[]> {
+    await this.simulateNetworkDelay(200, 400);
+    
+    // Generate mock recent patients with varying last visit dates
+    const recentPatients: PatientSummary[] = [];
+    const now = new Date();
+    
+    for (let i = 0; i < Math.min(limit, 10); i++) {
+      const patientId = `mock-patient-${String(i + 1).padStart(3, '0')}`;
+      const patient = generateMockPatientSummary(patientId);
+      
+      // Set realistic last visit dates (within last 30 days, with some having no visits)
+      if (i < 7) {
+        const daysAgo = Math.floor(Math.random() * 30);
+        patient.lastVisit = new Date(now.getTime() - daysAgo * 24 * 60 * 60 * 1000);
+        patient.totalVisits = Math.floor(Math.random() * 5) + 1;
+      } else {
+        // Some patients with no visits yet
+        patient.lastVisit = undefined;
+        patient.totalVisits = 0;
+      }
+      
+      recentPatients.push(patient);
+    }
+    
+    // Sort by last visit (most recent first), then by creation date
+    recentPatients.sort((a, b) => {
+      if (a.lastVisit && b.lastVisit) {
+        return b.lastVisit.getTime() - a.lastVisit.getTime();
+      }
+      if (a.lastVisit && !b.lastVisit) return -1;
+      if (!a.lastVisit && b.lastVisit) return 1;
+      // Both have no last visit, sort by creation date (using lastSyncedAt as proxy)
+      return b.lastSyncedAt.getTime() - a.lastSyncedAt.getTime();
+    });
+    
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`👥 Retrieved ${recentPatients.length} recent patients`);
+    }
+    
+    return recentPatients;
+  }
+
   // ============================================================================
   // CLINICAL NOTES
   // ============================================================================

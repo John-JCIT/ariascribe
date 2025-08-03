@@ -6,7 +6,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import type { PatientSummary, PatientContext } from '@/types/clinical';
+import type { PatientSummary, PatientContext, EHRProvider } from '@/types/clinical';
 import { getCurrentUserEHRService } from '@/services';
 import type { StandaloneClinicService } from '@/services/StandaloneClinicService';
 
@@ -118,7 +118,7 @@ export function usePatient(options: UsePatientOptions = {}): UsePatientResult {
   }, [patientId, enabled]);
 
   useEffect(() => {
-    fetchPatient();
+    void fetchPatient();
   }, [fetchPatient]);
 
   return {
@@ -186,7 +186,7 @@ export function usePatientSearch(options: UsePatientSearchOptions = {}): UsePati
   // Initial search if query provided
   useEffect(() => {
     if (initialQuery) {
-      search(initialQuery);
+      void search(initialQuery);
     }
   }, [initialQuery, search]);
 
@@ -299,7 +299,7 @@ export function useUpdatePatient() {
 /**
  * Hook for getting a list of recent patients
  */
-export function useRecentPatients(limit: number = 10) {
+export function useRecentPatients(limit = 10) {
   const [patients, setPatients] = useState<PatientSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -309,16 +309,13 @@ export function useRecentPatients(limit: number = 10) {
       setLoading(true);
       setError(null);
 
-      const ehrService = await getCurrentUserEHRService();
+      const ehrService: EHRProvider = await getCurrentUserEHRService();
       
-      // For now, we'll use search with an empty query to get recent patients
-      // In a real implementation, this might be a separate API endpoint
-      if ('searchPatients' in ehrService) {
-        const results = await (ehrService as StandaloneClinicService).searchPatients('', limit);
-        setPatients(results);
-      } else {
-        setPatients([]);
-      }
+      // Use dedicated getRecentPatients method for accurate retrieval
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-argument
+      const results = await ehrService.getRecentPatients(limit);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+      setPatients(results);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to fetch recent patients';
       setError(errorMessage);
@@ -329,7 +326,7 @@ export function useRecentPatients(limit: number = 10) {
   }, [limit]);
 
   useEffect(() => {
-    fetchRecentPatients();
+    void fetchRecentPatients();
   }, [fetchRecentPatients]);
 
   return {

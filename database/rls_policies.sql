@@ -12,8 +12,17 @@
 -- Function to set the current tenant for a session
 CREATE OR REPLACE FUNCTION set_tenant(tenant_uuid uuid)
 RETURNS void AS $$
+DECLARE
+  tenant_exists boolean;
 BEGIN
-  -- Set the tenant_id in the current session
+  -- Validate that the tenant_uuid exists in the tenants table
+  SELECT EXISTS(SELECT 1 FROM tenants WHERE id = tenant_uuid::text) INTO tenant_exists;
+  
+  IF NOT tenant_exists THEN
+    RAISE EXCEPTION 'Tenant with UUID % does not exist', tenant_uuid;
+  END IF;
+  
+  -- Set the tenant_id in the current session only if validation passes
   PERFORM set_config('app.tenant_id', tenant_uuid::text, false);
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
@@ -62,22 +71,23 @@ CREATE POLICY tenant_isolation_insert ON tenants
 -- Users can only see patients from their tenant
 CREATE POLICY patient_tenant_isolation_select ON patients
   FOR SELECT
-  USING (tenant_id = get_current_tenant_id());
+  USING ("tenantId" = get_current_tenant_id());
 
 -- Users can only insert patients for their tenant
 CREATE POLICY patient_tenant_isolation_insert ON patients
   FOR INSERT
-  WITH CHECK (tenant_id = get_current_tenant_id());
+  WITH CHECK ("tenantId" = get_current_tenant_id());
 
 -- Users can only update patients from their tenant
 CREATE POLICY patient_tenant_isolation_update ON patients
   FOR UPDATE
-  USING (tenant_id = get_current_tenant_id());
+  USING ("tenantId" = get_current_tenant_id())
+  WITH CHECK ("tenantId" = get_current_tenant_id());
 
 -- Users can only delete patients from their tenant
 CREATE POLICY patient_tenant_isolation_delete ON patients
   FOR DELETE
-  USING (tenant_id = get_current_tenant_id());
+  USING ("tenantId" = get_current_tenant_id());
 
 -- ============================================================================
 -- CONSULTATIONS TABLE POLICIES
@@ -86,22 +96,23 @@ CREATE POLICY patient_tenant_isolation_delete ON patients
 -- Users can only see consultations from their tenant
 CREATE POLICY consultation_tenant_isolation_select ON consultations
   FOR SELECT
-  USING (tenant_id = get_current_tenant_id());
+  USING ("tenantId" = get_current_tenant_id());
 
 -- Users can only insert consultations for their tenant
 CREATE POLICY consultation_tenant_isolation_insert ON consultations
   FOR INSERT
-  WITH CHECK (tenant_id = get_current_tenant_id());
+  WITH CHECK ("tenantId" = get_current_tenant_id());
 
 -- Users can only update consultations from their tenant
 CREATE POLICY consultation_tenant_isolation_update ON consultations
   FOR UPDATE
-  USING (tenant_id = get_current_tenant_id());
+  USING ("tenantId" = get_current_tenant_id())
+  WITH CHECK ("tenantId" = get_current_tenant_id());
 
 -- Users can only delete consultations from their tenant
 CREATE POLICY consultation_tenant_isolation_delete ON consultations
   FOR DELETE
-  USING (tenant_id = get_current_tenant_id());
+  USING ("tenantId" = get_current_tenant_id());
 
 -- ============================================================================
 -- CLINICAL_NOTES TABLE POLICIES
@@ -110,22 +121,23 @@ CREATE POLICY consultation_tenant_isolation_delete ON consultations
 -- Users can only see clinical notes from their tenant
 CREATE POLICY clinical_note_tenant_isolation_select ON clinical_notes
   FOR SELECT
-  USING (tenant_id = get_current_tenant_id());
+  USING ("tenantId" = get_current_tenant_id());
 
 -- Users can only insert clinical notes for their tenant
 CREATE POLICY clinical_note_tenant_isolation_insert ON clinical_notes
   FOR INSERT
-  WITH CHECK (tenant_id = get_current_tenant_id());
+  WITH CHECK ("tenantId" = get_current_tenant_id());
 
 -- Users can only update clinical notes from their tenant
 CREATE POLICY clinical_note_tenant_isolation_update ON clinical_notes
   FOR UPDATE
-  USING (tenant_id = get_current_tenant_id());
+  USING ("tenantId" = get_current_tenant_id())
+  WITH CHECK ("tenantId" = get_current_tenant_id());
 
 -- Users can only delete clinical notes from their tenant
 CREATE POLICY clinical_note_tenant_isolation_delete ON clinical_notes
   FOR DELETE
-  USING (tenant_id = get_current_tenant_id());
+  USING ("tenantId" = get_current_tenant_id());
 
 -- ============================================================================
 -- EXPORTS TABLE POLICIES
@@ -134,22 +146,23 @@ CREATE POLICY clinical_note_tenant_isolation_delete ON clinical_notes
 -- Users can only see exports from their tenant
 CREATE POLICY export_tenant_isolation_select ON exports
   FOR SELECT
-  USING (tenant_id = get_current_tenant_id());
+  USING ("tenantId" = get_current_tenant_id());
 
 -- Users can only insert exports for their tenant
 CREATE POLICY export_tenant_isolation_insert ON exports
   FOR INSERT
-  WITH CHECK (tenant_id = get_current_tenant_id());
+  WITH CHECK ("tenantId" = get_current_tenant_id());
 
 -- Users can only update exports from their tenant
 CREATE POLICY export_tenant_isolation_update ON exports
   FOR UPDATE
-  USING (tenant_id = get_current_tenant_id());
+  USING ("tenantId" = get_current_tenant_id())
+  WITH CHECK ("tenantId" = get_current_tenant_id());
 
 -- Users can only delete exports from their tenant
 CREATE POLICY export_tenant_isolation_delete ON exports
   FOR DELETE
-  USING (tenant_id = get_current_tenant_id());
+  USING ("tenantId" = get_current_tenant_id());
 
 -- ============================================================================
 -- AUDIT TRIGGER FUNCTION

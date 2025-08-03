@@ -2,7 +2,7 @@
  * Check actual database schema
  */
 
-import { PrismaClient } from './src/generated/prisma/index.js';
+import { PrismaClient } from '../../src/generated/prisma/index.js';
 
 const db = new PrismaClient();
 

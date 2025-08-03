@@ -8,9 +8,9 @@
  * - EHR service factory
  */
 
-import { PrismaClient } from './src/generated/prisma/index.js';
-import { createTenant, getDataStore, getTenantConfig } from './src/server/datastore/index';
-import { getEHRService } from './src/services/index';
+import { PrismaClient } from '../../src/generated/prisma/index.js';
+import { createTenant, getDataStore, getTenantConfig } from '../../src/server/datastore/index';
+import { getEHRService } from '../../src/services/index';
 
 const db = new PrismaClient();
 
@@ -89,7 +89,7 @@ async function testPhase2A() {
     // Test 10: Test EHR service factory
     console.log('🔟 Testing EHR service factory...');
     // Mock the getCurrentTenantId function for testing
-    const originalGetCurrentTenantId = (await import('./src/services/index.js')).getCurrentTenantId;
+    const originalGetCurrentTenantId = (await import('../../src/services/index.js')).getCurrentTenantId;
     
     // Create a mock that returns our test tenant ID
     const mockGetCurrentTenantId = async () => tenant.id;

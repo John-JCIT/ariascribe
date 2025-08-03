@@ -89,17 +89,37 @@ export async function getCurrentTenantId(): Promise<string | null> {
 
 /**
  * Get the current clinician ID from session/auth
- * This is a placeholder - implement based on your authentication system
+ * This function retrieves the authenticated user's ID from the current session
  */
 export async function getCurrentClinicianId(): Promise<string | null> {
-  // TODO: Implement based on your authentication system
-  
-  // For now, return a default clinician for development
-  if (process.env.NODE_ENV === 'development') {
-    return 'dev-clinician-001';
+  try {
+    // Import getServerSession dynamically to avoid circular dependencies
+    const { getServerSession } = await import('@/server/auth');
+    const session = await getServerSession();
+    
+    // Return the authenticated user's ID as the clinician ID
+    // In this system, users are clinicians when they have access to the app
+    if (session?.user?.id) {
+      return session.user.id;
+    }
+    
+    // For development mode, return a default clinician if no session
+    if (process.env.NODE_ENV === 'development') {
+      console.warn('No authenticated session found, using development clinician ID');
+      return 'dev-clinician-001';
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('Failed to get current clinician ID:', error);
+    
+    // Fallback for development
+    if (process.env.NODE_ENV === 'development') {
+      return 'dev-clinician-001';
+    }
+    
+    return null;
   }
-  
-  return null;
 }
 
 /**
