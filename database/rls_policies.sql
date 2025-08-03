@@ -16,7 +16,7 @@ DECLARE
   tenant_exists boolean;
 BEGIN
   -- Validate that the tenant_uuid exists in the tenants table
-  SELECT EXISTS(SELECT 1 FROM tenants WHERE id = tenant_uuid::text) INTO tenant_exists;
+  SELECT EXISTS(SELECT 1 FROM tenants WHERE id = tenant_uuid) INTO tenant_exists;
   
   IF NOT tenant_exists THEN
     RAISE EXCEPTION 'Tenant with UUID % does not exist', tenant_uuid;
