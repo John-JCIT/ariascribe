@@ -52,13 +52,14 @@ export function PendingActions({
   });
 
   // Generate pending actions based on current data
+  const now = new Date(); // Create once per render, outside useMemo
+  
   const pendingActions = React.useMemo(() => {
     if (!stats || !appointments) return [];
 
 
 
     const actions: PendingAction[] = [];
-    const now = new Date(); // Create once and reuse
 
     // Notes awaiting review
     if (stats.notesAwaitingReview > 0) {
@@ -205,7 +206,7 @@ function ActionItem({ action, onActionClick, onDismiss }: ActionItemProps) {
   return (
     <div
       className={cn(
-        "flex items-start gap-3 p-3 rounded-lg border transition-colors cursor-pointer hover:bg-muted/50",
+        "group flex items-start gap-3 p-3 rounded-lg border transition-colors cursor-pointer hover:bg-muted/50",
         colorClass
       )}
       onClick={() => onActionClick?.(action)}

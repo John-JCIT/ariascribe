@@ -185,7 +185,7 @@ function PatientSummary({ appointment }: { appointment: Appointment }) {
               </div>
               <div className="flex items-center gap-2">
                 <Mail className="h-3 w-3" />
-                <span>{appointment.patientName.toLowerCase().replace(' ', '.')}@email.com</span>
+                <span>{appointment.patientEmail}</span>
               </div>
             </div>
           </div>

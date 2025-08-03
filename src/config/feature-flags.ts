@@ -43,10 +43,7 @@ export function getEnabledFeatures(): FeatureFlag[] {
  * (Phase 1 features are now always enabled)
  */
 export function hasExperimentalFeaturesEnabled(): boolean {
-  return FEATURE_FLAGS['ehr-integration'] || 
-         FEATURE_FLAGS['best-practice-sync'] ||
-         FEATURE_FLAGS['audio-recording'] ||
-         FEATURE_FLAGS['ai-note-generation'];
+  return Object.values(FEATURE_FLAGS).some(Boolean);
 }
 
 /**

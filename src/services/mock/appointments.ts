@@ -32,21 +32,21 @@ const APPOINTMENT_TYPES = [
 ] as const;
 
 const PATIENT_NAMES = [
-  { first: 'Sarah', last: 'Johnson', age: 34, gender: 'F' as const },
-  { first: 'Michael', last: 'Chen', age: 42, gender: 'M' as const },
-  { first: 'Emma', last: 'Williams', age: 28, gender: 'F' as const },
-  { first: 'James', last: 'Brown', age: 56, gender: 'M' as const },
-  { first: 'Lisa', last: 'Davis', age: 45, gender: 'F' as const },
-  { first: 'Robert', last: 'Wilson', age: 38, gender: 'M' as const },
-  { first: 'Jennifer', last: 'Taylor', age: 52, gender: 'F' as const },
-  { first: 'David', last: 'Anderson', age: 29, gender: 'M' as const },
-  { first: 'Michelle', last: 'Thomas', age: 41, gender: 'F' as const },
-  { first: 'Christopher', last: 'Jackson', age: 33, gender: 'M' as const },
-  { first: 'Amanda', last: 'White', age: 47, gender: 'F' as const },
-  { first: 'Matthew', last: 'Harris', age: 35, gender: 'M' as const },
-  { first: 'Rebecca', last: 'Martin', age: 39, gender: 'F' as const },
-  { first: 'Andrew', last: 'Thompson', age: 44, gender: 'M' as const },
-  { first: 'Jessica', last: 'Garcia', age: 31, gender: 'F' as const },
+  { first: 'Sarah', last: 'Johnson', age: 34, gender: 'F' as const, email: 'sarah.johnson@email.com' },
+  { first: 'Michael', last: 'Chen', age: 42, gender: 'M' as const, email: 'michael.chen@gmail.com' },
+  { first: 'Emma', last: 'Williams', age: 28, gender: 'F' as const, email: 'emma.williams@outlook.com' },
+  { first: 'James', last: 'Brown', age: 56, gender: 'M' as const, email: 'james.brown@email.com' },
+  { first: 'Lisa', last: 'Davis', age: 45, gender: 'F' as const, email: 'lisa.davis@gmail.com' },
+  { first: 'Robert', last: 'Wilson', age: 38, gender: 'M' as const, email: 'robert.wilson@yahoo.com' },
+  { first: 'Jennifer', last: 'Taylor', age: 52, gender: 'F' as const, email: 'jennifer.taylor@email.com' },
+  { first: 'David', last: 'Anderson', age: 29, gender: 'M' as const, email: 'david.anderson@gmail.com' },
+  { first: 'Michelle', last: 'Thomas', age: 41, gender: 'F' as const, email: 'michelle.thomas@outlook.com' },
+  { first: 'Christopher', last: 'Jackson', age: 33, gender: 'M' as const, email: 'chris.jackson@email.com' },
+  { first: 'Amanda', last: 'White', age: 47, gender: 'F' as const, email: 'amanda.white@gmail.com' },
+  { first: 'Matthew', last: 'Harris', age: 35, gender: 'M' as const, email: 'matthew.harris@yahoo.com' },
+  { first: 'Rebecca', last: 'Martin', age: 39, gender: 'F' as const, email: 'rebecca.martin@email.com' },
+  { first: 'Andrew', last: 'Thompson', age: 44, gender: 'M' as const, email: 'andrew.thompson@gmail.com' },
+  { first: 'Jessica', last: 'Garcia', age: 31, gender: 'F' as const, email: 'jessica.garcia@outlook.com' },
 ] as const;
 
 const TYPICAL_DURATIONS = [15, 20, 30, 45, 60] as const;
@@ -71,7 +71,7 @@ function seededRandom(seed: string, index: number): number {
 /**
  * Generates realistic appointment statuses based on time of day
  */
-function generateAppointmentStatus(scheduledTime: Date, now: Date): AppointmentStatus {
+function generateAppointmentStatus(scheduledTime: Date, now: Date, rng: () => number): AppointmentStatus {
   const appointmentTime = scheduledTime.getTime();
   const currentTime = now.getTime();
   const timeDiff = appointmentTime - currentTime;
@@ -84,13 +84,13 @@ function generateAppointmentStatus(scheduledTime: Date, now: Date): AppointmentS
   // Recent past appointments (within last 2 hours)
   if (timeDiff < 0 && Math.abs(timeDiff) < 2 * 60 * 60 * 1000) {
     const outcomes: AppointmentStatus[] = ['completed', 'completed', 'completed', 'processing'];
-    return outcomes[Math.floor(Math.random() * outcomes.length)];
+    return outcomes[Math.floor(rng() * outcomes.length)]!;
   }
   
   // Current/near-term appointments
   if (Math.abs(timeDiff) <= 30 * 60 * 1000) {
     const currentStatuses: AppointmentStatus[] = ['waiting', 'in-progress', 'recording'];
-    return currentStatuses[Math.floor(Math.random() * currentStatuses.length)];
+    return currentStatuses[Math.floor(rng() * currentStatuses.length)]!;
   }
   
   return 'scheduled';
@@ -109,7 +109,7 @@ function generateMockAppointment(
   
   // Select patient data
   const patientIndex = Math.floor(random(1) * PATIENT_NAMES.length);
-  const patient = PATIENT_NAMES[patientIndex];
+  const patient = PATIENT_NAMES[patientIndex]!; // Safe because patientIndex is always within bounds
   
   // Generate appointment time (8 AM to 6 PM, typical GP hours)
   const startHour = 8;
@@ -123,11 +123,11 @@ function generateMockAppointment(
   
   // Select appointment type and duration
   const appointmentTypeIndex = Math.floor(random(3) * APPOINTMENT_TYPES.length);
-  const appointmentType = APPOINTMENT_TYPES[appointmentTypeIndex];
-  const duration = TYPICAL_DURATIONS[Math.floor(random(4) * TYPICAL_DURATIONS.length)];
+  const appointmentType = APPOINTMENT_TYPES[appointmentTypeIndex]!;
+  const duration = TYPICAL_DURATIONS[Math.floor(random(4) * TYPICAL_DURATIONS.length)]!;
   
   // Generate status based on current time
-  const status = generateAppointmentStatus(scheduledTime, new Date());
+  const status = generateAppointmentStatus(scheduledTime, date, random);
   
   // Generate IDs
   const appointmentId = `mock-appt-${format(date, 'yyyy-MM-dd')}-${index.toString().padStart(3, '0')}`;
@@ -148,6 +148,7 @@ function generateMockAppointment(
     patientName: `${patient.first} ${patient.last}`,
     patientAge: patient.age,
     patientGender: patient.gender,
+    patientEmail: patient.email,
     
     // Add consultation tracking for active appointments
     ...(status === 'recording' && {
@@ -156,7 +157,7 @@ function generateMockAppointment(
     }),
     
     // Metadata
-    createdAt: new Date(date.getTime() - Math.random() * 7 * 24 * 60 * 60 * 1000), // Created within last week
+    createdAt: new Date(date.getTime() - random(6) * 7 * 24 * 60 * 60 * 1000), // Created within last week
     updatedAt: new Date(),
   };
 }

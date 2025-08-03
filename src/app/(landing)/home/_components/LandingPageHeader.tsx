@@ -13,7 +13,10 @@ export default function LandingPageHeader() {
   const pathname = usePathname();
 
   // Hide navigation links on auth pages (signin, signup, etc.)
-  const isAuthPage = pathname.includes('/signin') || pathname.includes('/signup') || pathname.includes('/forgot-password') || pathname.includes('/email-verified');
+  const authPages = ['/signin', '/signup', '/forgot-password', '/email-verified'];
+  const isAuthPage = authPages.some(authPath => 
+    pathname === authPath || pathname.startsWith(authPath + '/')
+  );
   const navigationLinks = isAuthPage ? [] : [blogLink, pricingLink, aboutLink];
   
   // For user dropdown, we don't want any of these marketing links - users are already logged in

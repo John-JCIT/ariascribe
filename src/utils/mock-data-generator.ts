@@ -80,7 +80,7 @@ export function generateDateRangeData(
     });
 
     results.push(dayData);
-    currentDate.setDate(currentDate.getDate() + 1);
+    currentDate = addDays(currentDate, 1);
   }
 
   return results;
@@ -142,14 +142,14 @@ export async function logMockDataState(clinicianId: string = 'mock-clinician-001
 /**
  * Clear all mock data (useful for testing)
  */
-export function clearMockData(): void {
+export async function clearMockData(): Promise<void> {
   if (process.env.NODE_ENV !== 'development') {
     console.warn('Mock data clearing should only be used in development');
     return;
   }
 
   // Reset the mock service
-  const { resetMockEHRService } = require('@/services/mock/MockEHRService');
+  const { resetMockEHRService } = await import('@/services/mock/MockEHRService');
   resetMockEHRService();
   
   console.log('🗑️ Mock data cleared');

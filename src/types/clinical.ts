@@ -36,6 +36,7 @@ export interface Appointment {
   patientName: string;
   patientAge: number;
   patientGender: 'M' | 'F' | 'Other' | 'Unknown';
+  patientEmail: string;
   
   // Consultation tracking
   consultationId?: string;
