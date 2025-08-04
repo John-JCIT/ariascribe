@@ -4,6 +4,7 @@ import { utImageRouter } from "./routers/utImage";
 import { polarRouter } from "./routers/polar";
 import { authRouter } from "./routers/auth";
 import { adminRouter } from "./routers/admin";
+import { mbsAdminRouter } from "./routers/mbs-admin";
 
 export const appRouter = createTRPCRouter({
   user: userRouter,
@@ -11,6 +12,7 @@ export const appRouter = createTRPCRouter({
   polar: polarRouter,
   auth: authRouter,
   admin: adminRouter,
+  mbsAdmin: mbsAdminRouter,
 });
 
 export type AppRouter = typeof appRouter;

@@ -1,12 +1,14 @@
 generator client {
   provider = "prisma-client-js"
   output   = "../src/generated/prisma"
+  previewFeatures = ["multiSchema"]
 }
 
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
   // directUrl = env("DIRECT_URL") //uncomment for supabase
+  schemas  = ["public", "mbs"]
 }
 
 model User {
@@ -55,6 +57,7 @@ model User {
 
   @@unique([username])
   @@map("users")
+  @@schema("public")
 }
 
 model Session {
@@ -70,6 +73,7 @@ model Session {
   impersonatedBy String?
 
   @@map("session")
+  @@schema("public")
 }
 
 model Account {
@@ -89,6 +93,7 @@ model Account {
   updatedAt             DateTime? @updatedAt
 
   @@map("accounts")
+  @@schema("public")
 }
 
 model Verification {
@@ -100,6 +105,7 @@ model Verification {
   updatedAt  DateTime? @updatedAt
 
   @@map("verifications")
+  @@schema("public")
 }
 
 model UTImage {
@@ -114,6 +120,7 @@ model UTImage {
 
   @@index([userId])
   @@map("ut_images")
+  @@schema("public")
 }
 
 // ============================================================================
@@ -142,6 +149,7 @@ model Tenant {
   exports           Export[]
   
   @@map("tenants")
+  @@schema("public")
 }
 
 model Patient {
@@ -177,6 +185,7 @@ model Patient {
   @@index([tenantId])
   @@index([tenantId, lastName, firstName])
   @@map("patients")
+  @@schema("public")
 }
 
 model Consultation {
@@ -210,6 +219,7 @@ model Consultation {
   @@index([tenantId, patientId])
   @@index([tenantId, status])
   @@map("consultations")
+  @@schema("public")
 }
 
 model ClinicalNote {
@@ -245,6 +255,7 @@ model ClinicalNote {
   @@index([tenantId, patientId])
   @@index([tenantId, status])
   @@map("clinical_notes")
+  @@schema("public")
 }
 
 model Export {
@@ -270,6 +281,129 @@ model Export {
   @@index([tenantId])
   @@index([tenantId, consultationId])
   @@map("exports")
+  @@schema("public")
+}
+
+// MBS Schema Models
+// Note: Vector and advanced operations will use raw SQL due to Prisma limitations
+
+model MbsItem {
+  id                    Int       @id @default(autoincrement())
+  itemNumber            Int       @unique @map("item_number")
+  
+  // Basic information
+  description           String
+  shortDescription      String?   @map("short_description")
+  category              String?   @db.VarChar(10)
+  subCategory           String?   @map("sub_category") @db.VarChar(10)
+  groupName             String?   @map("group_name")
+  subGroup              String?   @map("sub_group")
+  
+  // Provider and service type
+  providerType          String?   @map("provider_type") @db.VarChar(10)
+  serviceType           String?   @map("service_type") @db.VarChar(50)
+  
+  // Fee information
+  scheduleFee           Decimal?  @map("schedule_fee") @db.Decimal(10,2)
+  benefit75             Decimal?  @map("benefit_75") @db.Decimal(10,2)
+  benefit85             Decimal?  @map("benefit_85") @db.Decimal(10,2)
+  benefit100            Decimal?  @map("benefit_100") @db.Decimal(10,2)
+  
+  // Anaesthetic information
+  hasAnaesthetic        Boolean   @default(false) @map("has_anaesthetic")
+  anaestheticBasicUnits Int?      @map("anaesthetic_basic_units")
+  
+  // Derived fee
+  derivedFeeDescription String?   @map("derived_fee_description")
+  
+  // Status and validity
+  isActive              Boolean   @default(true) @map("is_active")
+  isNewItem             Boolean   @default(false) @map("is_new_item")
+  itemStartDate         DateTime? @map("item_start_date") @db.Date
+  itemEndDate           DateTime? @map("item_end_date") @db.Date
+  
+  // Metadata (tsv and embedding handled via raw SQL)
+  rawXmlData            Json?     @map("raw_xml_data")
+  lastUpdated           DateTime  @default(now()) @map("last_updated") @db.Timestamptz(6)
+  createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  
+  // Relations
+  suggestions           MbsSuggestion[]
+
+  @@map("items")
+  @@schema("mbs")
+}
+
+model MbsIngestionLog {
+  id                    Int       @id @default(autoincrement())
+  
+  // File information
+  fileName              String?   @map("file_name")
+  fileHash              String    @map("file_hash") @db.VarChar(64)
+  fileSizeBytes         BigInt?   @map("file_size_bytes")
+  
+  // Processing information
+  startedAt             DateTime  @default(now()) @map("started_at") @db.Timestamptz(6)
+  completedAt           DateTime? @map("completed_at") @db.Timestamptz(6)
+  status                String    @default("processing") @db.VarChar(20)
+  
+  // Results
+  itemsProcessed        Int       @default(0) @map("items_processed")
+  itemsInserted         Int       @default(0) @map("items_inserted")
+  itemsUpdated          Int       @default(0) @map("items_updated")
+  itemsFailed           Int       @default(0) @map("items_failed")
+  
+  // Performance metrics
+  processingTimeMs      Int?      @map("processing_time_ms")
+  embeddingTimeMs       Int?      @map("embedding_time_ms")
+  
+  // Error information
+  errorMessage          String?   @map("error_message")
+  errorDetails          Json?     @map("error_details")
+  
+  // Metadata
+  processorVersion      String?   @map("processor_version") @db.VarChar(50)
+  openaiModel           String    @default("text-embedding-3-large") @map("openai_model") @db.VarChar(50)
+
+  @@map("ingestion_log")
+  @@schema("mbs")
+}
+
+model MbsSuggestion {
+  id                    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  
+  // Tenant isolation
+  tenantId              String    @map("tenant_id")
+  userId                String    @map("user_id")
+  consultationId        String?   @map("consultation_id")
+  
+  // Suggestion context
+  soapExcerpt           String?   @map("soap_excerpt")
+  consultationType      String?   @map("consultation_type") @db.VarChar(50)
+  
+  // Suggested item
+  itemNumber            Int       @map("item_number")
+  confidence            Decimal?  @db.Decimal(3,2)
+  reasoning             String?
+  matchedConcepts       String[]  @map("matched_concepts")
+  
+  // User interaction
+  status                String    @default("suggested") @db.VarChar(20)
+  userActionAt          DateTime? @map("user_action_at") @db.Timestamptz(6)
+  
+  // AI metadata
+  modelUsed             String?   @map("model_used") @db.VarChar(50)
+  processingTimeMs      Int?      @map("processing_time_ms")
+  
+  // Timestamps
+  createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  
+  // Relations
+  mbsItem               MbsItem   @relation(fields: [itemNumber], references: [itemNumber])
+
+  @@map("suggestions")
+  @@schema("mbs")
 }
 
 // ============================================================================
@@ -279,12 +413,16 @@ model Export {
 enum OperatingMode {
   STANDALONE
   EHR_INTEGRATED
+  
+  @@schema("public")
 }
 
 enum PatientSource {
   ARIA_SCRIBE
   EHR
   IMPORTED
+  
+  @@schema("public")
 }
 
 enum Gender {
@@ -292,6 +430,8 @@ enum Gender {
   F
   OTHER
   UNKNOWN
+  
+  @@schema("public")
 }
 
 enum ConsultationStatus {
@@ -301,6 +441,8 @@ enum ConsultationStatus {
   REVIEW
   COMPLETE
   ERROR
+  
+  @@schema("public")
 }
 
 enum NoteType {
@@ -310,6 +452,8 @@ enum NoteType {
   PLAN
   REFERRAL
   OTHER
+  
+  @@schema("public")
 }
 
 enum NoteStatus {
@@ -318,12 +462,16 @@ enum NoteStatus {
   FINAL
   AMENDED
   SIGNED
+  
+  @@schema("public")
 }
 
 enum ExportFormat {
   PDF
   DOCX
   TXT
+  
+  @@schema("public")
 }
 
 enum ExportStatus {
@@ -331,4 +479,6 @@ enum ExportStatus {
   PROCESSING
   COMPLETED
   FAILED
+  
+  @@schema("public")
 }
