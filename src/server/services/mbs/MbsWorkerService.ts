@@ -1,5 +1,4 @@
-import type { PrismaClient } from "@/generated/prisma";
-import { Prisma } from "@/generated/prisma";
+import type { PrismaClient, Prisma } from "@/generated/prisma";
 import { createHash } from "crypto";
 import { readFile, stat } from "fs/promises";
 import { parseStringPromise } from "xml2js";
@@ -343,8 +342,8 @@ export class MbsWorkerService {
 
     return {
       itemNumber: getFirstAsInt(xmlItem.ItemNum),
-      description: getFirst(xmlItem.Description) ?? '', // Real XML uses 'Description' not 'Descriptor'
-      shortDescription: getFirst(xmlItem.Description)?.substring(0, 255) ?? '', // Truncate for short description
+      description: getFirst(xmlItem.Descriptor) ?? '', // Use 'Descriptor' as defined in interface
+      shortDescription: getFirst(xmlItem.Descriptor)?.substring(0, 255) ?? '', // Truncate for short description
       category: getFirst(xmlItem.Category),
       subCategory: getFirst(xmlItem.SubCategory),
       groupName: getFirst(xmlItem.Group),
@@ -356,7 +355,7 @@ export class MbsWorkerService {
       benefit85: getFirstAsNumber(xmlItem.Benefit85),
       benefit100: getFirstAsNumber(xmlItem.Benefit100),
       hasAnaesthetic: getFirstAsBoolean(xmlItem.HasAnaesthetic),
-      anaestheticBasicUnits: getFirstAsInt(xmlItem.BasicUnits), // Real XML uses 'BasicUnits'
+      anaestheticBasicUnits: getFirstAsInt(xmlItem.AnaestheticBasicUnits), // Use property defined in interface
       derivedFeeDescription: getFirst(xmlItem.DerivedFee),
       itemStartDate: getFirstAsDate(xmlItem.ItemStartDate),
       itemEndDate: getFirstAsDate(xmlItem.ItemEndDate),
@@ -520,9 +519,9 @@ export class MbsWorkerService {
 
       return {
         success: true,
-        itemsProcessed: Array.isArray(result) ? result.length : (itemIds?.length ?? 0),
+        itemsProcessed: result,
         itemsInserted: 0,
-        itemsUpdated: Array.isArray(result) ? result.length : (itemIds?.length ?? 0),
+        itemsUpdated: result,
         itemsFailed: 0,
         processingTimeMs,
       };

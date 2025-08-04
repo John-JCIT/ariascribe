@@ -326,14 +326,14 @@ describe('MbsWorkerService', () => {
     });
 
     it('should update search vectors for specific items', async () => {
-      const itemIds = [1, 2, 3];
+      const itemIds = [23, 36, 2713]; // Use actual MBS item numbers
       mockPrisma.$executeRawUnsafe.mockResolvedValue(3);
 
       const result = await service.updateSearchVectors(itemIds);
 
       expect(result.success).toBe(true);
       expect(mockPrisma.$executeRawUnsafe).toHaveBeenCalledWith(
-        expect.stringContaining('WHERE id = ANY($1)'),
+        expect.stringContaining('WHERE item_number = ANY($1)'),
         itemIds
       );
     });
