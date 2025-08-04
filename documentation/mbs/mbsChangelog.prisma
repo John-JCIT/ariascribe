@@ -1,0 +1,7 @@
+model MbsChangelog {
+  id          Int    @id @default(autoincrement())
+  item_number Int
+  change_type String
+  summary     String
+  change_date DateTime
+}

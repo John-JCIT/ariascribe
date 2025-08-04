@@ -1,0 +1,7 @@
+model MbsGuidance {
+  id             String   @id @default(uuid())
+  item_number    Int
+  source_url     String
+  summary        String
+  published_date DateTime
+}

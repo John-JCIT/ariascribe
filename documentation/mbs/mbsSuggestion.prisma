@@ -1,0 +1,8 @@
+model MbsSuggestion {
+  id              String   @id @default(uuid())
+  consultation_id String
+  item_number     Int
+  suggested_by    String
+  accepted        Boolean?
+  created_at      DateTime @default(now())
+}

@@ -1,0 +1,10 @@
+model MbsItem {
+  item_number    Int     @id
+  group_code     String? 
+  subgroup_code  String?
+  description    String
+  notes          String?
+  fee            Float
+  valid_from     DateTime?
+  valid_to       DateTime?
+}
