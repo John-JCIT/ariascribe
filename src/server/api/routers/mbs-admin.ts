@@ -1,30 +1,27 @@
 import { z } from "zod";
-import { createTRPCRouter, protectedProcedure } from "@/server/api/trpc";
+import { createTRPCRouter, adminProcedure } from "@/server/api/trpc";
 import { MbsQueueService } from "@/server/services/mbs/MbsQueueService";
 import { TRPCError } from "@trpc/server";
 
-const mbsQueueService = new MbsQueueService();
+/**
+ * Factory function to create MbsQueueService instance
+ * This improves testability and resource management by avoiding singleton pattern
+ */
+const createMbsQueueService = () => new MbsQueueService();
 
 export const mbsAdminRouter = createTRPCRouter({
   /**
    * Queue XML ingestion job
    */
-  queueXmlIngestion: protectedProcedure
+  queueXmlIngestion: adminProcedure
     .input(z.object({
       filePath: z.string(),
       fileName: z.string(),
       forceReprocess: z.boolean().default(false),
     }))
-    .mutation(async ({ input, ctx }) => {
-      // Check if user has admin permissions
-      if (ctx.user.role !== 'admin') {
-        throw new TRPCError({
-          code: 'FORBIDDEN',
-          message: 'Admin access required for MBS operations',
-        });
-      }
-
+    .mutation(async ({ input }) => {
       try {
+        const mbsQueueService = createMbsQueueService();
         const jobId = await mbsQueueService.queueXmlIngestion(input);
         return { success: true, jobId };
       } catch (error) {
@@ -38,20 +35,14 @@ export const mbsAdminRouter = createTRPCRouter({
   /**
    * Queue embedding generation job
    */
-  queueEmbeddingGeneration: protectedProcedure
+  queueEmbeddingGeneration: adminProcedure
     .input(z.object({
       itemIds: z.array(z.number()).optional(),
       batchSize: z.number().min(1).max(100).default(50),
     }))
-    .mutation(async ({ input, ctx }) => {
-      if (ctx.user.role !== 'admin') {
-        throw new TRPCError({
-          code: 'FORBIDDEN',
-          message: 'Admin access required for MBS operations',
-        });
-      }
-
+    .mutation(async ({ input }) => {
       try {
+        const mbsQueueService = createMbsQueueService();
         const jobId = await mbsQueueService.queueEmbeddingGeneration(input);
         return { success: true, jobId };
       } catch (error) {
@@ -65,21 +56,15 @@ export const mbsAdminRouter = createTRPCRouter({
   /**
    * Queue full ingestion pipeline
    */
-  queueFullPipeline: protectedProcedure
+  queueFullPipeline: adminProcedure
     .input(z.object({
       filePath: z.string(),
       fileName: z.string(),
       forceReprocess: z.boolean().default(false),
     }))
-    .mutation(async ({ input, ctx }) => {
-      if (ctx.user.role !== 'admin') {
-        throw new TRPCError({
-          code: 'FORBIDDEN',
-          message: 'Admin access required for MBS operations',
-        });
-      }
-
+    .mutation(async ({ input }) => {
       try {
+        const mbsQueueService = createMbsQueueService();
         const result = await mbsQueueService.queueFullIngestionPipeline(
           input.filePath,
           input.fileName,
@@ -97,19 +82,13 @@ export const mbsAdminRouter = createTRPCRouter({
   /**
    * Get job status
    */
-  getJobStatus: protectedProcedure
+  getJobStatus: adminProcedure
     .input(z.object({
       jobId: z.string(),
     }))
-    .query(async ({ input, ctx }) => {
-      if (ctx.user.role !== 'admin') {
-        throw new TRPCError({
-          code: 'FORBIDDEN',
-          message: 'Admin access required for MBS operations',
-        });
-      }
-
+    .query(async ({ input }) => {
       try {
+        const mbsQueueService = createMbsQueueService();
         const status = await mbsQueueService.getJobStatus(input.jobId);
         return status;
       } catch (error) {
@@ -123,16 +102,10 @@ export const mbsAdminRouter = createTRPCRouter({
   /**
    * Get queue statistics
    */
-  getQueueStats: protectedProcedure
-    .query(async ({ ctx }) => {
-      if (ctx.user.role !== 'admin') {
-        throw new TRPCError({
-          code: 'FORBIDDEN',
-          message: 'Admin access required for MBS operations',
-        });
-      }
-
+  getQueueStats: adminProcedure
+    .query(async () => {
       try {
+        const mbsQueueService = createMbsQueueService();
         const stats = await mbsQueueService.getQueueStats();
         return stats;
       } catch (error) {
@@ -146,19 +119,12 @@ export const mbsAdminRouter = createTRPCRouter({
   /**
    * Get ingestion logs
    */
-  getIngestionLogs: protectedProcedure
+  getIngestionLogs: adminProcedure
     .input(z.object({
       limit: z.number().min(1).max(100).default(20),
       offset: z.number().min(0).default(0),
     }))
     .query(async ({ input, ctx }) => {
-      if (ctx.user.role !== 'admin') {
-        throw new TRPCError({
-          code: 'FORBIDDEN',
-          message: 'Admin access required for MBS operations',
-        });
-      }
-
       try {
         const logs = await ctx.db.mbsIngestionLog.findMany({
           take: input.limit,
@@ -186,15 +152,8 @@ export const mbsAdminRouter = createTRPCRouter({
   /**
    * Get MBS item statistics
    */
-  getItemStats: protectedProcedure
+  getItemStats: adminProcedure
     .query(async ({ ctx }) => {
-      if (ctx.user.role !== 'admin') {
-        throw new TRPCError({
-          code: 'FORBIDDEN',
-          message: 'Admin access required for MBS operations',
-        });
-      }
-
       try {
         const [
           totalItems,
@@ -205,8 +164,12 @@ export const mbsAdminRouter = createTRPCRouter({
         ] = await Promise.all([
           ctx.db.mbsItem.count(),
           ctx.db.mbsItem.count({ where: { isActive: true } }),
-          // Note: This is a placeholder - we'll need raw SQL to count embeddings
-          ctx.db.mbsItem.count(), // Will be replaced with proper embedding count
+          // Count items that have embeddings (embedding field is not null)
+          ctx.db.$queryRaw<[{ count: bigint }]>`
+            SELECT COUNT(*) as count 
+            FROM mbs.items 
+            WHERE embedding IS NOT NULL
+          `.then(result => Number(result[0]?.count ?? 0)),
           ctx.db.mbsItem.groupBy({
             by: ['category'],
             _count: true,
@@ -225,7 +188,7 @@ export const mbsAdminRouter = createTRPCRouter({
         return {
           totalItems,
           activeItems,
-          itemsWithEmbeddings: itemsWithEmbeddings, // Placeholder
+          itemsWithEmbeddings,
           categoryCounts: categoryCounts.map(c => ({
             category: c.category,
             count: c._count,
@@ -246,16 +209,10 @@ export const mbsAdminRouter = createTRPCRouter({
   /**
    * Clean up old jobs
    */
-  cleanJobs: protectedProcedure
-    .mutation(async ({ ctx }) => {
-      if (ctx.user.role !== 'admin') {
-        throw new TRPCError({
-          code: 'FORBIDDEN',
-          message: 'Admin access required for MBS operations',
-        });
-      }
-
+  cleanJobs: adminProcedure
+    .mutation(async () => {
       try {
+        const mbsQueueService = createMbsQueueService();
         await mbsQueueService.cleanJobs();
         return { success: true };
       } catch (error) {

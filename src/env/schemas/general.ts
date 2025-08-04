@@ -21,4 +21,5 @@ export const clientSchema = z.object({
 export const serverSchema = z.object({
   DATABASE_URL: z.string().url(),
   ENABLE_ARTIFICIAL_TRPC_DELAY: zStringToBool.default("true"),
+  MBS_QUEUE_NAME: z.string().default("aria-scribe-worker"),
 });

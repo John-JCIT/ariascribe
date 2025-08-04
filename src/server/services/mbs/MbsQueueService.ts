@@ -1,12 +1,13 @@
-import { Queue } from "bullmq";
+import { Queue, type JobsOptions, type Job, type JobProgress } from "bullmq";
 import { bullConnection } from "@/server/instrumentation/bull/connection";
 import { QUEUE_TYPES, type MbsIngestXmlJobData, type MbsGenerateEmbeddingsJobData, type MbsUpdateSearchVectorsJobData } from "@/server/instrumentation/bull/types";
+import { serverEnv } from "@/env";
 
 export class MbsQueueService {
   private queue: Queue;
 
   constructor() {
-    this.queue = new Queue("aria-scribe-worker", {
+    this.queue = new Queue(serverEnv.MBS_QUEUE_NAME, {
       connection: bullConnection,
     });
   }
@@ -37,54 +38,86 @@ export class MbsQueueService {
   /**
    * Queue embedding generation job
    */
-  async queueEmbeddingGeneration(data: MbsGenerateEmbeddingsJobData, priority = 0): Promise<string> {
+  async queueEmbeddingGeneration(data: MbsGenerateEmbeddingsJobData, priority = 0, parentJobId?: string): Promise<string> {
+    const jobOptions: JobsOptions = {
+      priority,
+      attempts: 2,
+      backoff: {
+        type: 'exponential',
+        delay: 5000,
+      },
+      removeOnComplete: 5,
+      removeOnFail: 20,
+    };
+
+    // Add parent dependency if provided
+    if (parentJobId) {
+      jobOptions.parent = {
+        id: parentJobId,
+        queue: "aria-scribe-worker",
+      };
+    }
+
     const job = await this.queue.add(
       QUEUE_TYPES.MBS_GENERATE_EMBEDDINGS,
       data,
-      {
-        priority,
-        attempts: 2,
-        backoff: {
-          type: 'exponential',
-          delay: 5000,
-        },
-        removeOnComplete: 5,
-        removeOnFail: 20,
-      }
+      jobOptions
     );
 
-    console.log(`🧠 Queued MBS embedding generation job: ${job.id} for ${data.itemIds?.length || 'all'} items`);
+    const dependencyMsg = parentJobId ? ` (depends on job ${parentJobId})` : '';
+    console.log(`🧠 Queued MBS embedding generation job: ${job.id} for ${data.itemIds?.length ?? 'all'} items${dependencyMsg}`);
     return job.id!;
   }
 
   /**
    * Queue search vector update job
    */
-  async queueSearchVectorUpdate(data: MbsUpdateSearchVectorsJobData, priority = 0): Promise<string> {
+  async queueSearchVectorUpdate(data: MbsUpdateSearchVectorsJobData, priority = 0, parentJobId?: string): Promise<string> {
+    const jobOptions: JobsOptions = {
+      priority,
+      attempts: 2,
+      backoff: {
+        type: 'exponential',
+        delay: 1000,
+      },
+      removeOnComplete: 5,
+      removeOnFail: 10,
+    };
+
+    // Add parent dependency if provided
+    if (parentJobId) {
+      jobOptions.parent = {
+        id: parentJobId,
+        queue: "aria-scribe-worker",
+      };
+    }
+
     const job = await this.queue.add(
       QUEUE_TYPES.MBS_UPDATE_SEARCH_VECTORS,
       data,
-      {
-        priority,
-        attempts: 2,
-        backoff: {
-          type: 'exponential',
-          delay: 1000,
-        },
-        removeOnComplete: 5,
-        removeOnFail: 10,
-      }
+      jobOptions
     );
 
-    console.log(`🔍 Queued MBS search vector update job: ${job.id} for ${data.itemIds?.length || 'all'} items`);
+    const dependencyMsg = parentJobId ? ` (depends on job ${parentJobId})` : '';
+    console.log(`🔍 Queued MBS search vector update job: ${job.id} for ${data.itemIds?.length ?? 'all'} items${dependencyMsg}`);
     return job.id!;
   }
 
   /**
    * Get job status
    */
-  async getJobStatus(jobId: string) {
-    const job = await this.queue.getJob(jobId);
+  async getJobStatus(jobId: string): Promise<{
+    id: string | undefined;
+    name: string;
+    data: unknown;
+    progress: JobProgress;
+    returnvalue: unknown;
+    failedReason: string;
+    processedOn: number | undefined;
+    finishedOn: number | undefined;
+    opts: JobsOptions;
+  } | null> {
+    const job = await this.queue.getJob(jobId) as Job | undefined;
     if (!job) {
       return null;
     }
@@ -106,17 +139,74 @@ export class MbsQueueService {
    * Get queue statistics
    */
   async getQueueStats() {
-    const waiting = await this.queue.getWaiting();
-    const active = await this.queue.getActive();
-    const completed = await this.queue.getCompleted();
-    const failed = await this.queue.getFailed();
+    const waiting = await this.queue.getWaitingCount();
+    const active = await this.queue.getActiveCount();
+    const completed = await this.queue.getCompletedCount();
+    const failed = await this.queue.getFailedCount();
 
     return {
-      waiting: waiting.length,
-      active: active.length,
-      completed: completed.length,
-      failed: failed.length,
-      total: waiting.length + active.length + completed.length + failed.length,
+      waiting,
+      active,
+      completed,
+      failed,
+      total: waiting + active + completed + failed,
+    };
+  }
+
+  /**
+   * Get pipeline status for monitoring progress
+   */
+  async getPipelineStatus(xmlJobId: string, embeddingJobId: string, vectorJobId: string): Promise<{
+    xmlJob: {
+      id: string | undefined;
+      progress: JobProgress;
+      processedOn: number | undefined;
+      finishedOn: number | undefined;
+      failedReason: string;
+    } | null;
+    embeddingJob: {
+      id: string | undefined;
+      progress: JobProgress;
+      processedOn: number | undefined;
+      finishedOn: number | undefined;
+      failedReason: string;
+    } | null;
+    vectorJob: {
+      id: string | undefined;
+      progress: JobProgress;
+      processedOn: number | undefined;
+      finishedOn: number | undefined;
+      failedReason: string;
+    } | null;
+  }> {
+    const [xmlJob, embeddingJob, vectorJob] = await Promise.all([
+      this.getJobStatus(xmlJobId),
+      this.getJobStatus(embeddingJobId),
+      this.getJobStatus(vectorJobId),
+    ]);
+
+    return {
+      xmlJob: xmlJob ? {
+        id: xmlJob.id,
+        progress: xmlJob.progress,
+        processedOn: xmlJob.processedOn,
+        finishedOn: xmlJob.finishedOn,
+        failedReason: xmlJob.failedReason,
+      } : null,
+      embeddingJob: embeddingJob ? {
+        id: embeddingJob.id,
+        progress: embeddingJob.progress,
+        processedOn: embeddingJob.processedOn,
+        finishedOn: embeddingJob.finishedOn,
+        failedReason: embeddingJob.failedReason,
+      } : null,
+      vectorJob: vectorJob ? {
+        id: vectorJob.id,
+        progress: vectorJob.progress,
+        processedOn: vectorJob.processedOn,
+        finishedOn: vectorJob.finishedOn,
+        failedReason: vectorJob.failedReason,
+      } : null,
     };
   }
 
@@ -129,32 +219,38 @@ export class MbsQueueService {
   }
 
   /**
-   * Process full MBS ingestion pipeline
+   * Process full MBS ingestion pipeline with enforced sequential execution
    * 1. Ingest XML
-   * 2. Generate embeddings
-   * 3. Update search vectors
+   * 2. Generate embeddings (waits for XML completion)
+   * 3. Update search vectors (waits for embeddings completion)
    */
   async queueFullIngestionPipeline(filePath: string, fileName: string, forceReprocess = false): Promise<{
     xmlJobId: string;
     embeddingJobId: string;
     vectorJobId: string;
   }> {
-    // Queue XML ingestion with high priority
+    // Step 1: Queue XML ingestion with high priority
     const xmlJobId = await this.queueXmlIngestion({
       filePath,
       fileName,
       forceReprocess,
     }, 10);
 
-    // Queue embedding generation (will process after XML ingestion)
+    console.log(`🚀 Started MBS ingestion pipeline for ${fileName}`);
+    console.log(`   📋 XML Job: ${xmlJobId} (queued)`);
+
+    // Step 2: Queue embedding generation with dependency on XML completion
     const embeddingJobId = await this.queueEmbeddingGeneration({
       batchSize: 50,
-    }, 5);
+    }, 5, xmlJobId); // Pass parent job ID for dependency
 
-    // Queue search vector update (will process after embeddings)
-    const vectorJobId = await this.queueSearchVectorUpdate({}, 1);
+    console.log(`   🧠 Embedding Job: ${embeddingJobId} (waiting for XML completion)`);
 
-    console.log(`🚀 Queued full MBS ingestion pipeline: XML(${xmlJobId}) → Embeddings(${embeddingJobId}) → Vectors(${vectorJobId})`);
+    // Step 3: Queue search vector update with dependency on embeddings completion
+    const vectorJobId = await this.queueSearchVectorUpdate({}, 1, embeddingJobId); // Pass parent job ID for dependency
+
+    console.log(`   🔍 Vector Job: ${vectorJobId} (waiting for embeddings completion)`);
+    console.log(`✅ Pipeline queued: XML → Embeddings → Vectors`);
 
     return {
       xmlJobId,
