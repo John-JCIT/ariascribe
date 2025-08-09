@@ -1,4 +1,5 @@
 import type { PrismaClient } from "@/generated/prisma";
+import { Prisma } from "@/generated/prisma";
 import type { 
   SearchFilters, 
   MbsItemSummary, 
@@ -124,97 +125,78 @@ export class MbsDataService {
       return { results: [], total: 0 };
     }
 
-    // Build WHERE clause for filters
-    const whereConditions: string[] = [];
-    const params: unknown[] = [];
-    let paramIndex = 1;
-
-    // Add text search condition
-    whereConditions.push(`tsv @@ plainto_tsquery('english', $${paramIndex})`);
-    params.push(query);
-    paramIndex++;
-
-    // Apply filters
-    if (filters?.providerType && filters.providerType !== 'ALL') {
-      whereConditions.push(`provider_type = $${paramIndex}`);
-      params.push(filters.providerType);
-      paramIndex++;
-    }
-
-    if (filters?.category) {
-      whereConditions.push(`category = $${paramIndex}`);
-      params.push(filters.category);
-      paramIndex++;
-    }
-
-    if (!filters?.includeInactive) {
-      whereConditions.push('is_active = true');
-    }
-
-    if (filters?.minFee !== undefined) {
-      whereConditions.push(`schedule_fee >= $${paramIndex}`);
-      params.push(filters.minFee);
-      paramIndex++;
-    }
-
-    if (filters?.maxFee !== undefined) {
-      whereConditions.push(`schedule_fee <= $${paramIndex}`);
-      params.push(filters.maxFee);
-      paramIndex++;
-    }
-
-    const whereClause = whereConditions.length > 0 
-      ? `WHERE ${whereConditions.join(' AND ')}` 
-      : '';
-
-    // Build ORDER BY clause
-    let orderBy = '';
-    switch (sortBy) {
-      case 'relevance':
-        orderBy = 'ORDER BY ts_rank(tsv, plainto_tsquery($1)) DESC, item_number ASC';
-        break;
-      case 'fee_asc':
-        orderBy = 'ORDER BY schedule_fee ASC NULLS LAST, item_number ASC';
-        break;
-      case 'fee_desc':
-        orderBy = 'ORDER BY schedule_fee DESC NULLS LAST, item_number ASC';
-        break;
-      case 'item_number':
-        orderBy = 'ORDER BY item_number ASC';
-        break;
-      default:
-        orderBy = 'ORDER BY ts_rank(tsv, plainto_tsquery($1)) DESC, item_number ASC';
-    }
-
-    // Get total count
-    const countQuery = `
-      SELECT COUNT(*) as count
-      FROM mbs.items 
-      ${whereClause}
-    `;
+    // Build safe count query with parameters
+    let countQuery = Prisma.sql`SELECT COUNT(*) as count FROM mbs.items WHERE tsv @@ plainto_tsquery('english', ${query})`;
     
-    const countResult = await this.db.$queryRawUnsafe<[{ count: bigint }]>(
-      countQuery, 
-      ...params
-    );
+    // Add filter conditions
+    if (filters?.providerType && filters.providerType !== 'ALL') {
+      countQuery = Prisma.sql`${countQuery} AND provider_type = ${filters.providerType}`;
+    }
+    if (filters?.category) {
+      countQuery = Prisma.sql`${countQuery} AND category = ${filters.category}`;
+    }
+    if (!filters?.includeInactive) {
+      countQuery = Prisma.sql`${countQuery} AND is_active = true`;
+    }
+    if (filters?.minFee !== undefined) {
+      countQuery = Prisma.sql`${countQuery} AND schedule_fee >= ${filters.minFee}`;
+    }
+    if (filters?.maxFee !== undefined) {
+      countQuery = Prisma.sql`${countQuery} AND schedule_fee <= ${filters.maxFee}`;
+    }
+    
+    const countResult = await this.db.$queryRaw<[{ count: bigint }]>(countQuery);
     const total = Number(countResult[0]?.count ?? 0);
 
-    // Get paginated results
-    const searchQuery = `
+    // Build safe search query with parameters
+    let searchQuery = Prisma.sql`
       SELECT 
         id, item_number, description, short_description, category, 
         provider_type, service_type, schedule_fee, benefit_75, benefit_85, benefit_100,
         is_active, item_start_date, item_end_date,
-        ts_rank(tsv, plainto_tsquery($1)) as rank
+        ts_rank(tsv, plainto_tsquery('english', ${query})) as rank
       FROM mbs.items 
-      ${whereClause}
-      ${orderBy}
-      LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
-    `;
+      WHERE tsv @@ plainto_tsquery('english', ${query})`;
     
-    params.push(limit, offset);
+    // Add filter conditions
+    if (filters?.providerType && filters.providerType !== 'ALL') {
+      searchQuery = Prisma.sql`${searchQuery} AND provider_type = ${filters.providerType}`;
+    }
+    if (filters?.category) {
+      searchQuery = Prisma.sql`${searchQuery} AND category = ${filters.category}`;
+    }
+    if (!filters?.includeInactive) {
+      searchQuery = Prisma.sql`${searchQuery} AND is_active = true`;
+    }
+    if (filters?.minFee !== undefined) {
+      searchQuery = Prisma.sql`${searchQuery} AND schedule_fee >= ${filters.minFee}`;
+    }
+    if (filters?.maxFee !== undefined) {
+      searchQuery = Prisma.sql`${searchQuery} AND schedule_fee <= ${filters.maxFee}`;
+    }
+    
+    // Add ORDER BY clause
+    switch (sortBy) {
+      case 'relevance':
+        searchQuery = Prisma.sql`${searchQuery} ORDER BY ts_rank(tsv, plainto_tsquery('english', ${query})) DESC, item_number ASC`;
+        break;
+      case 'fee_asc':
+        searchQuery = Prisma.sql`${searchQuery} ORDER BY schedule_fee ASC NULLS LAST, item_number ASC`;
+        break;
+      case 'fee_desc':
+        searchQuery = Prisma.sql`${searchQuery} ORDER BY schedule_fee DESC NULLS LAST, item_number ASC`;
+        break;
+      case 'item_number':
+        searchQuery = Prisma.sql`${searchQuery} ORDER BY item_number ASC`;
+        break;
+      default:
+        searchQuery = Prisma.sql`${searchQuery} ORDER BY ts_rank(tsv, plainto_tsquery('english', ${query})) DESC, item_number ASC`;
+    }
+    
+    // Add LIMIT and OFFSET
+    searchQuery = Prisma.sql`${searchQuery} LIMIT ${limit} OFFSET ${offset}`;
 
-    const searchResults = await this.db.$queryRawUnsafe<Array<{
+    const searchResults = await this.db.$queryRaw<Array<{
       id: number;
       item_number: number;
       description: string;
@@ -230,7 +212,7 @@ export class MbsDataService {
       item_start_date?: Date;
       item_end_date?: Date;
       rank: number;
-    }>>(searchQuery, ...params);
+    }>>(searchQuery);
 
     const results: TextSearchResult[] = searchResults.map(row => ({
       item: {

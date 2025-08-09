@@ -15,8 +15,11 @@
 -- Create MBS schema if it doesn't exist
 CREATE SCHEMA IF NOT EXISTS mbs;
 
--- Enable necessary extensions (commented out - install separately if needed)
--- CREATE EXTENSION IF NOT EXISTS vector;
+-- Enable necessary extensions
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+-- Future extensions (commented out - install when needed)
+-- CREATE EXTENSION IF NOT EXISTS pgvector;
 
 -- ============================================================================
 -- MBS TABLES - Create all MBS tables

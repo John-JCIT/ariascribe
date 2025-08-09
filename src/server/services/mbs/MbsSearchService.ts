@@ -6,7 +6,9 @@ import type {
   SearchResponse, 
   SearchResult, 
   SearchType,
-  MbsItemSummary 
+  MbsItemSummary,
+  SearchFilters,
+  SortOrder
 } from "./types";
 
 interface CombinedSearchResult {
@@ -23,11 +25,11 @@ interface CombinedSearchResult {
  */
 export class MbsSearchService {
   private dataService: MbsDataService;
-  private openai: OpenAI;
+  private openai: OpenAI | null;
 
-  constructor(db: PrismaClient, openaiApiKey: string) {
+  constructor(db: PrismaClient, openaiApiKey?: string) {
     this.dataService = new MbsDataService(db);
-    this.openai = new OpenAI({ apiKey: openaiApiKey });
+    this.openai = openaiApiKey ? new OpenAI({ apiKey: openaiApiKey }) : null;
   }
 
   /**
@@ -38,10 +40,10 @@ export class MbsSearchService {
     const {
       query,
       searchType = 'hybrid',
-      filters = {},
+      filters = {} as SearchFilters,
       limit = 20,
       offset = 0,
-      sortBy = 'relevance'
+      sortBy = 'relevance' as SortOrder
     } = request;
 
     // Validate inputs
@@ -58,6 +60,14 @@ export class MbsSearchService {
 
     if (limit > 100) {
       throw new Error('Limit cannot exceed 100 results');
+    }
+
+    if (limit < 1) {
+      throw new Error('Limit must be at least 1');
+    }
+
+    if (offset < 0) {
+      throw new Error('Offset cannot be negative');
     }
 
     const searchOptions = {
@@ -77,13 +87,23 @@ export class MbsSearchService {
           ({ results, total } = await this.performTextSearch(searchOptions));
           break;
         case 'semantic':
-          ({ results, total } = await this.performSemanticSearch(searchOptions));
+          if (!this.openai) {
+            console.log('OpenAI API key not configured, falling back to text search');
+            ({ results, total } = await this.performTextSearch(searchOptions));
+          } else {
+            ({ results, total } = await this.performSemanticSearch(searchOptions));
+          }
           break;
         case 'hybrid':
-          ({ results, total } = await this.performHybridSearch(searchOptions));
+          if (!this.openai) {
+            console.log('OpenAI API key not configured, falling back to text search');
+            ({ results, total } = await this.performTextSearch(searchOptions));
+          } else {
+            ({ results, total } = await this.performHybridSearch(searchOptions));
+          }
           break;
         default:
-          throw new Error(`Unsupported search type: ${searchType}`);
+          throw new Error(`Unsupported search type: ${searchType as string}`);
       }
     } catch (error) {
       console.error('Search error:', error);
@@ -115,10 +135,10 @@ export class MbsSearchService {
    */
   private async performTextSearch(options: {
     query: string;
-    filters: any;
+    filters: SearchFilters;
     limit: number;
     offset: number;
-    sortBy: any;
+    sortBy: SortOrder;
   }): Promise<{ results: SearchResult[]; total: number }> {
     const { results: textResults, total } = await this.dataService.performTextSearch(options);
 
@@ -138,11 +158,15 @@ export class MbsSearchService {
    */
   private async performSemanticSearch(options: {
     query: string;
-    filters: any;
+    filters: SearchFilters;
     limit: number;
     offset: number;
-    sortBy: any;
+    sortBy: SortOrder;
   }): Promise<{ results: SearchResult[]; total: number }> {
+    if (!this.openai) {
+      throw new Error('OpenAI API key not configured - semantic search unavailable');
+    }
+    
     // Generate embedding for the query
     const queryEmbedding = await this.generateQueryEmbedding(options.query);
     
@@ -166,13 +190,13 @@ export class MbsSearchService {
    */
   private async performHybridSearch(options: {
     query: string;
-    filters: any;
+    filters: SearchFilters;
     limit: number;
     offset: number;
-    sortBy: any;
+    sortBy: SortOrder;
   }): Promise<{ results: SearchResult[]; total: number }> {
     // Run both searches in parallel with larger limits to get more candidates
-    const candidateLimit = Math.min(options.limit * 3, 100); // Get more candidates for better hybrid results
+    const candidateLimit = Math.min(Math.max(options.limit, 1) * 3, 100); // Get more candidates for better hybrid results
     
     const [textSearchPromise, semanticSearchPromise] = await Promise.allSettled([
       this.dataService.performTextSearch({
@@ -264,6 +288,10 @@ export class MbsSearchService {
    * Generate embedding for a search query
    */
   private async generateQueryEmbedding(query: string): Promise<number[]> {
+    if (!this.openai) {
+      throw new Error('OpenAI API key not configured - semantic search unavailable');
+    }
+
     try {
       const response = await this.openai.embeddings.create({
         model: 'text-embedding-3-large',

@@ -29,7 +29,7 @@ export interface MbsItemSummary {
   description: string;
   shortDescription?: string;
   category?: string;
-  providerType?: string;
+  providerType?: ProviderType;
   serviceType?: string;
   scheduleFee?: number;
   benefit75?: number;

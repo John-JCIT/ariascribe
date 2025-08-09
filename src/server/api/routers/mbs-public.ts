@@ -2,15 +2,14 @@ import { z } from "zod";
 import { createTRPCRouter, publicProcedure } from "@/server/api/trpc";
 import { MbsSearchService } from "@/server/services/mbs/MbsSearchService";
 import { TRPCError } from "@trpc/server";
+import type { PrismaClient } from "@/generated/prisma";
+
 
 /**
  * Factory function to create MbsSearchService instance
  */
-const createMbsSearchService = (db: any) => {
-  const openaiApiKey = process.env.OPENAI_API_KEY;
-  if (!openaiApiKey) {
-    throw new Error('OPENAI_API_KEY is required for MBS search functionality');
-  }
+const createMbsSearchService = (db: PrismaClient) => {
+  const openaiApiKey = process.env.OPENAI_API_KEY ?? undefined;
   return new MbsSearchService(db, openaiApiKey);
 };
 
@@ -43,7 +42,18 @@ export const mbsPublicRouter = createTRPCRouter({
     .input(searchInputSchema)
     .query(async ({ input, ctx }) => {
       try {
-        const searchService = createMbsSearchService(ctx.db);
+        const searchService = createMbsSearchService(ctx.db as unknown as PrismaClient);
+        
+        // Check if OpenAI is available and normalize search type if needed
+        const openaiApiKey = process.env.OPENAI_API_KEY;
+        const isOpenAIAvailable = !!openaiApiKey;
+        
+        // Override search type to 'text' if OpenAI is unavailable and semantic/hybrid was requested
+        const normalizedInput = { ...input };
+        if (!isOpenAIAvailable && (input.searchType === 'semantic' || input.searchType === 'hybrid')) {
+          normalizedInput.searchType = 'text';
+          console.log(`OpenAI unavailable: normalized search type from '${input.searchType}' to 'text'`);
+        }
         
         // Validate fee range
         if (input.filters?.minFee !== undefined && 
@@ -55,7 +65,7 @@ export const mbsPublicRouter = createTRPCRouter({
           });
         }
 
-        const result = await searchService.search(input);
+        const result = await searchService.search(normalizedInput);
         return result;
       } catch (error) {
         console.error('MBS search error:', error);
@@ -78,7 +88,7 @@ export const mbsPublicRouter = createTRPCRouter({
     .input(itemNumberSchema)
     .query(async ({ input, ctx }) => {
       try {
-        const searchService = createMbsSearchService(ctx.db);
+        const searchService = createMbsSearchService(ctx.db as unknown as PrismaClient);
         const item = await searchService.getItemByNumber(input.itemNumber);
 
         if (!item) {
@@ -109,7 +119,7 @@ export const mbsPublicRouter = createTRPCRouter({
   health: publicProcedure
     .query(async ({ ctx }) => {
       try {
-        const searchService = createMbsSearchService(ctx.db);
+        const searchService = createMbsSearchService(ctx.db as unknown as PrismaClient);
         const stats = await searchService.getHealthStats();
         
         return {
@@ -141,7 +151,7 @@ export const mbsPublicRouter = createTRPCRouter({
               isActive: true,
               category: { not: null }
             },
-            _count: true,
+            _count: { _all: true },
             orderBy: { category: 'asc' },
           }),
           ctx.db.mbsItem.groupBy({
@@ -150,7 +160,7 @@ export const mbsPublicRouter = createTRPCRouter({
               isActive: true,
               providerType: { not: null }
             },
-            _count: true,
+            _count: { _all: true },
             orderBy: { providerType: 'asc' },
           }),
         ]);
@@ -158,11 +168,11 @@ export const mbsPublicRouter = createTRPCRouter({
         return {
           categories: categories.map(c => ({
             value: c.category,
-            count: c._count,
+            count: c._count._all,
           })),
           providerTypes: providerTypes.map(p => ({
             value: p.providerType,
-            count: p._count,
+            count: p._count._all,
           })),
           searchTypes: [
             { value: 'text', label: 'Text Search', description: 'Fast keyword-based search' },

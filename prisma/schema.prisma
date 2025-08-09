@@ -1,6 +1,6 @@
 generator client {
-  provider = "prisma-client-js"
-  output   = "../src/generated/prisma"
+  provider        = "prisma-client-js"
+  output          = "../src/generated/prisma"
   previewFeatures = ["multiSchema"]
 }
 
@@ -128,60 +128,60 @@ model UTImage {
 // ============================================================================
 
 model Tenant {
-  id                String   @id @default(uuid())
-  name              String
-  operatingMode     OperatingMode @default(STANDALONE)
-  isDedicatedDb     Boolean  @default(false)
-  dbConnectionUri   String?
-  adminCanChangeMode Boolean @default(true)
-  requiresApproval  Boolean  @default(false)
-  
+  id                 String        @id @default(uuid())
+  name               String
+  operatingMode      OperatingMode @default(STANDALONE)
+  isDedicatedDb      Boolean       @default(false)
+  dbConnectionUri    String?
+  adminCanChangeMode Boolean       @default(true)
+  requiresApproval   Boolean       @default(false)
+
   // Feature flags
-  features          Json     @default("{\"manualExport\": true, \"patientManagement\": true, \"ehrSync\": false}")
-  
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  
+  features Json @default("{\"manualExport\": true, \"patientManagement\": true, \"ehrSync\": false}")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   // Relations
-  patients          Patient[]
-  consultations     Consultation[]
-  clinicalNotes     ClinicalNote[]
-  exports           Export[]
-  
+  patients      Patient[]
+  consultations Consultation[]
+  clinicalNotes ClinicalNote[]
+  exports       Export[]
+
   @@map("tenants")
   @@schema("public")
 }
 
 model Patient {
-  id              String   @id @default(uuid())
-  tenantId        String
-  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   // External references
-  ehrPatientId    String?  // populated after EHR migration
-  source          PatientSource @default(ARIA_SCRIBE)
-  
+  ehrPatientId String? // populated after EHR migration
+  source       PatientSource @default(ARIA_SCRIBE)
+
   // Demographics
-  firstName       String
-  lastName        String
-  dateOfBirth     DateTime?
-  gender          Gender?
-  
+  firstName   String
+  lastName    String
+  dateOfBirth DateTime?
+  gender      Gender?
+
   // Contact info
-  phone           String?
-  email           String?
-  address         Json?    // Flexible address structure
-  
+  phone   String?
+  email   String?
+  address Json? // Flexible address structure
+
   // Clinical metadata
   lastConsultation DateTime?
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   // Relations
-  consultations   Consultation[]
-  clinicalNotes   ClinicalNote[]
-  
+  consultations Consultation[]
+  clinicalNotes ClinicalNote[]
+
   @@index([tenantId])
   @@index([tenantId, lastName, firstName])
   @@map("patients")
@@ -189,32 +189,32 @@ model Patient {
 }
 
 model Consultation {
-  id              String   @id @default(uuid())
-  tenantId        String
-  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  patientId       String
-  patient         Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  
+  id        String  @id @default(uuid())
+  tenantId  String
+  tenant    Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  patientId String
+  patient   Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
   // Session metadata
-  mode            OperatingMode
-  status          ConsultationStatus @default(READY)
-  
+  mode   OperatingMode
+  status ConsultationStatus @default(READY)
+
   // Recording data
   recordingStartTime DateTime?
   recordingEndTime   DateTime?
   audioFileUrl       String?
-  
+
   // Processing data
-  transcriptionText  String?
-  selectedTemplate   String?
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  
+  transcriptionText String?
+  selectedTemplate  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   // Relations
-  clinicalNotes   ClinicalNote[]
-  exports         Export[]
-  
+  clinicalNotes ClinicalNote[]
+  exports       Export[]
+
   @@index([tenantId])
   @@index([tenantId, patientId])
   @@index([tenantId, status])
@@ -223,34 +223,34 @@ model Consultation {
 }
 
 model ClinicalNote {
-  id              String   @id @default(uuid())
-  tenantId        String
-  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  patientId       String
-  patient         Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  consultationId  String?
-  consultation    Consultation? @relation(fields: [consultationId], references: [id], onDelete: SetNull)
-  
+  id             String        @id @default(uuid())
+  tenantId       String
+  tenant         Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  patientId      String
+  patient        Patient       @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  consultationId String?
+  consultation   Consultation? @relation(fields: [consultationId], references: [id], onDelete: SetNull)
+
   // Note content
-  title           String
-  content         String   // Markdown format
-  noteType        NoteType @default(PROGRESS)
-  template        String?
-  
+  title    String
+  content  String // Markdown format
+  noteType NoteType @default(PROGRESS)
+  template String?
+
   // Status and workflow
-  status          NoteStatus @default(DRAFT)
-  
+  status NoteStatus @default(DRAFT)
+
   // AI/Transcription metadata
   generatedFromAudio Boolean @default(false)
   transcriptionId    String?
   aiConfidence       Float?
   manuallyEdited     Boolean @default(false)
-  
+
   // Timestamps
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  signedAt        DateTime?
-  
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  signedAt  DateTime?
+
   @@index([tenantId])
   @@index([tenantId, patientId])
   @@index([tenantId, status])
@@ -259,25 +259,25 @@ model ClinicalNote {
 }
 
 model Export {
-  id              String   @id @default(uuid())
-  tenantId        String
-  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  consultationId  String
-  consultation    Consultation @relation(fields: [consultationId], references: [id], onDelete: Cascade)
-  
+  id             String       @id @default(uuid())
+  tenantId       String
+  tenant         Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  consultationId String
+  consultation   Consultation @relation(fields: [consultationId], references: [id], onDelete: Cascade)
+
   // Export metadata
-  format          ExportFormat
-  filePath        String?  // Local file path or cloud URL
-  fileName        String
-  fileSize        Int?     // bytes
-  
+  format   ExportFormat
+  filePath String? // Local file path or cloud URL
+  fileName String
+  fileSize Int? // bytes
+
   // Status
-  status          ExportStatus @default(PENDING)
-  error           String?
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  
+  status ExportStatus @default(PENDING)
+  error  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   @@index([tenantId])
   @@index([tenantId, consultationId])
   @@map("exports")
@@ -288,124 +288,124 @@ model Export {
 // Note: Vector and advanced operations will use raw SQL due to Prisma limitations
 
 model MbsItem {
-  id                    Int       @id @default(autoincrement())
-  itemNumber            Int       @unique @map("item_number")
-  
+  id         Int @id @default(autoincrement())
+  itemNumber Int @unique @map("item_number")
+
   // Basic information
-  description           String
-  shortDescription      String?   @map("short_description")
-  category              String?   @db.VarChar(10)
-  subCategory           String?   @map("sub_category") @db.VarChar(10)
-  groupName             String?   @map("group_name")
-  subGroup              String?   @map("sub_group")
-  
+  description      String
+  shortDescription String? @map("short_description")
+  category         String? @db.VarChar(10)
+  subCategory      String? @map("sub_category") @db.VarChar(10)
+  groupName        String? @map("group_name")
+  subGroup         String? @map("sub_group")
+
   // Provider and service type
-  providerType          String?   @map("provider_type") @db.VarChar(10)
-  serviceType           String?   @map("service_type") @db.VarChar(50)
-  
+  providerType String? @map("provider_type") @db.VarChar(10)
+  serviceType  String? @map("service_type") @db.VarChar(50)
+
   // Fee information
-  scheduleFee           Decimal?  @map("schedule_fee") @db.Decimal(10,2)
-  benefit75             Decimal?  @map("benefit_75") @db.Decimal(10,2)
-  benefit85             Decimal?  @map("benefit_85") @db.Decimal(10,2)
-  benefit100            Decimal?  @map("benefit_100") @db.Decimal(10,2)
-  
+  scheduleFee Decimal? @map("schedule_fee") @db.Decimal(10, 2)
+  benefit75   Decimal? @map("benefit_75") @db.Decimal(10, 2)
+  benefit85   Decimal? @map("benefit_85") @db.Decimal(10, 2)
+  benefit100  Decimal? @map("benefit_100") @db.Decimal(10, 2)
+
   // Anaesthetic information
-  hasAnaesthetic        Boolean   @default(false) @map("has_anaesthetic")
-  anaestheticBasicUnits Int?      @map("anaesthetic_basic_units")
-  
+  hasAnaesthetic        Boolean @default(false) @map("has_anaesthetic")
+  anaestheticBasicUnits Int?    @map("anaesthetic_basic_units")
+
   // Derived fee
-  derivedFeeDescription String?   @map("derived_fee_description")
-  
+  derivedFeeDescription String? @map("derived_fee_description")
+
   // Status and validity
-  isActive              Boolean   @default(true) @map("is_active")
-  isNewItem             Boolean   @default(false) @map("is_new_item")
-  itemStartDate         DateTime? @map("item_start_date") @db.Date
-  itemEndDate           DateTime? @map("item_end_date") @db.Date
-  
+  isActive      Boolean   @default(true) @map("is_active")
+  isNewItem     Boolean   @default(false) @map("is_new_item")
+  itemStartDate DateTime? @map("item_start_date") @db.Date
+  itemEndDate   DateTime? @map("item_end_date") @db.Date
+
   // Search and AI fields (managed via raw SQL)
   // Note: tsv is TSVECTOR type, embedding is JSONB for OpenAI embeddings
-  tsv                   String?   @map("tsv") // Will be TSVECTOR in actual DB
-  embedding             Json?     @map("embedding") // JSONB for vector storage
-  
+  tsv       Unsupported("tsvector")? @map("tsv") @ignore // PostgreSQL TSVECTOR for full-text search
+  embedding Json?                    @map("embedding") // JSONB for vector storage
+
   // Metadata
-  rawXmlData            Json?     @map("raw_xml_data")
-  lastUpdated           DateTime  @default(now()) @map("last_updated") @db.Timestamptz(6)
-  createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  
+  rawXmlData  Json?    @map("raw_xml_data")
+  lastUpdated DateTime @default(now()) @map("last_updated") @db.Timestamptz(6)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
   // Relations
-  suggestions           MbsSuggestion[]
+  suggestions MbsSuggestion[]
 
   @@map("items")
   @@schema("mbs")
 }
 
 model MbsIngestionLog {
-  id                    Int       @id @default(autoincrement())
-  
+  id Int @id @default(autoincrement())
+
   // File information
-  fileName              String?   @map("file_name")
-  fileHash              String    @map("file_hash") @db.VarChar(64)
-  fileSizeBytes         BigInt?   @map("file_size_bytes")
-  
+  fileName      String? @map("file_name")
+  fileHash      String  @map("file_hash") @db.VarChar(64)
+  fileSizeBytes BigInt? @map("file_size_bytes")
+
   // Processing information
-  startedAt             DateTime  @default(now()) @map("started_at") @db.Timestamptz(6)
-  completedAt           DateTime? @map("completed_at") @db.Timestamptz(6)
-  status                String    @default("processing") @db.VarChar(20)
-  
+  startedAt   DateTime  @default(now()) @map("started_at") @db.Timestamptz(6)
+  completedAt DateTime? @map("completed_at") @db.Timestamptz(6)
+  status      String    @default("processing") @db.VarChar(20)
+
   // Results
-  itemsProcessed        Int       @default(0) @map("items_processed")
-  itemsInserted         Int       @default(0) @map("items_inserted")
-  itemsUpdated          Int       @default(0) @map("items_updated")
-  itemsFailed           Int       @default(0) @map("items_failed")
-  
+  itemsProcessed Int @default(0) @map("items_processed")
+  itemsInserted  Int @default(0) @map("items_inserted")
+  itemsUpdated   Int @default(0) @map("items_updated")
+  itemsFailed    Int @default(0) @map("items_failed")
+
   // Performance metrics
-  processingTimeMs      Int?      @map("processing_time_ms")
-  embeddingTimeMs       Int?      @map("embedding_time_ms")
-  
+  processingTimeMs Int? @map("processing_time_ms")
+  embeddingTimeMs  Int? @map("embedding_time_ms")
+
   // Error information
-  errorMessage          String?   @map("error_message")
-  errorDetails          Json?     @map("error_details")
-  
+  errorMessage String? @map("error_message")
+  errorDetails Json?   @map("error_details")
+
   // Metadata
-  processorVersion      String?   @map("processor_version") @db.VarChar(50)
-  openaiModel           String    @default("text-embedding-3-large") @map("openai_model") @db.VarChar(50)
+  processorVersion String? @map("processor_version") @db.VarChar(50)
+  openaiModel      String  @default("text-embedding-3-large") @map("openai_model") @db.VarChar(50)
 
   @@map("ingestion_log")
   @@schema("mbs")
 }
 
 model MbsSuggestion {
-  id                    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
   // Tenant isolation
-  tenantId              String    @map("tenant_id")
-  userId                String    @map("user_id")
-  consultationId        String?   @map("consultation_id")
-  
+  tenantId       String  @map("tenant_id")
+  userId         String  @map("user_id")
+  consultationId String? @map("consultation_id")
+
   // Suggestion context
-  soapExcerpt           String?   @map("soap_excerpt")
-  consultationType      String?   @map("consultation_type") @db.VarChar(50)
-  
+  soapExcerpt      String? @map("soap_excerpt")
+  consultationType String? @map("consultation_type") @db.VarChar(50)
+
   // Suggested item
-  itemNumber            Int       @map("item_number")
-  confidence            Decimal?  @db.Decimal(3,2)
-  reasoning             String?
-  matchedConcepts       String[]  @map("matched_concepts")
-  
+  itemNumber      Int      @map("item_number")
+  confidence      Decimal? @db.Decimal(3, 2)
+  reasoning       String?
+  matchedConcepts String[] @map("matched_concepts")
+
   // User interaction
-  status                String    @default("suggested") @db.VarChar(20)
-  userActionAt          DateTime? @map("user_action_at") @db.Timestamptz(6)
-  
+  status       String    @default("suggested") @db.VarChar(20)
+  userActionAt DateTime? @map("user_action_at") @db.Timestamptz(6)
+
   // AI metadata
-  modelUsed             String?   @map("model_used") @db.VarChar(50)
-  processingTimeMs      Int?      @map("processing_time_ms")
-  
+  modelUsed        String? @map("model_used") @db.VarChar(50)
+  processingTimeMs Int?    @map("processing_time_ms")
+
   // Timestamps
-  createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt             DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
   // Relations
-  mbsItem               MbsItem   @relation(fields: [itemNumber], references: [itemNumber])
+  mbsItem MbsItem @relation(fields: [itemNumber], references: [itemNumber])
 
   @@map("suggestions")
   @@schema("mbs")
@@ -418,7 +418,7 @@ model MbsSuggestion {
 enum OperatingMode {
   STANDALONE
   EHR_INTEGRATED
-  
+
   @@schema("public")
 }
 
@@ -426,7 +426,7 @@ enum PatientSource {
   ARIA_SCRIBE
   EHR
   IMPORTED
-  
+
   @@schema("public")
 }
 
@@ -435,7 +435,7 @@ enum Gender {
   F
   OTHER
   UNKNOWN
-  
+
   @@schema("public")
 }
 
@@ -446,7 +446,7 @@ enum ConsultationStatus {
   REVIEW
   COMPLETE
   ERROR
-  
+
   @@schema("public")
 }
 
@@ -457,7 +457,7 @@ enum NoteType {
   PLAN
   REFERRAL
   OTHER
-  
+
   @@schema("public")
 }
 
@@ -467,7 +467,7 @@ enum NoteStatus {
   FINAL
   AMENDED
   SIGNED
-  
+
   @@schema("public")
 }
 
@@ -475,7 +475,7 @@ enum ExportFormat {
   PDF
   DOCX
   TXT
-  
+
   @@schema("public")
 }
 
@@ -484,6 +484,6 @@ enum ExportStatus {
   PROCESSING
   COMPLETED
   FAILED
-  
+
   @@schema("public")
 }
