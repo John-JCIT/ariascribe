@@ -4,7 +4,8 @@ import type {
   SearchFilters, 
   MbsItemSummary, 
   ItemDetailResponse,
-  SortOrder 
+  SortOrder,
+  ProviderType
 } from "./types";
 
 export interface DatabaseSearchOptions {
@@ -23,6 +24,15 @@ export interface TextSearchResult {
 export interface SemanticSearchResult {
   item: MbsItemSummary;
   similarity: number;
+}
+
+/**
+ * Helper function to safely cast a string to ProviderType
+ */
+function toProviderType(value: string | null | undefined): ProviderType | undefined {
+  if (!value) return undefined;
+  const validTypes: ProviderType[] = ['G', 'S', 'AD', 'ALL'];
+  return validTypes.includes(value as ProviderType) ? (value as ProviderType) : undefined;
 }
 
 /**
@@ -51,7 +61,7 @@ export class MbsDataService {
       subCategory: item.subCategory ?? undefined,
       groupName: item.groupName ?? undefined,
       subGroup: item.subGroup ?? undefined,
-      providerType: item.providerType ?? undefined,
+      providerType: toProviderType(item.providerType),
       serviceType: item.serviceType ?? undefined,
       scheduleFee: item.scheduleFee ? Number(item.scheduleFee) : undefined,
       benefit75: item.benefit75 ? Number(item.benefit75) : undefined,
@@ -100,7 +110,7 @@ export class MbsDataService {
       description: item.description,
       shortDescription: item.shortDescription ?? undefined,
       category: item.category ?? undefined,
-      providerType: item.providerType ?? undefined,
+      providerType: toProviderType(item.providerType),
       serviceType: item.serviceType ?? undefined,
       scheduleFee: item.scheduleFee ? Number(item.scheduleFee) : undefined,
       benefit75: item.benefit75 ? Number(item.benefit75) : undefined,
@@ -193,8 +203,12 @@ export class MbsDataService {
         searchQuery = Prisma.sql`${searchQuery} ORDER BY ts_rank(tsv, plainto_tsquery('english', ${query})) DESC, item_number ASC`;
     }
     
+    // Validate and sanitize limit and offset values
+    const validatedLimit = Math.max(1, Math.min(1000, limit));
+    const validatedOffset = Math.max(0, offset);
+    
     // Add LIMIT and OFFSET
-    searchQuery = Prisma.sql`${searchQuery} LIMIT ${limit} OFFSET ${offset}`;
+    searchQuery = Prisma.sql`${searchQuery} LIMIT ${validatedLimit} OFFSET ${validatedOffset}`;
 
     const searchResults = await this.db.$queryRaw<Array<{
       id: number;
@@ -221,7 +235,7 @@ export class MbsDataService {
         description: row.description,
         shortDescription: row.short_description ?? undefined,
         category: row.category ?? undefined,
-        providerType: row.provider_type ?? undefined,
+        providerType: toProviderType(row.provider_type),
         serviceType: row.service_type ?? undefined,
         scheduleFee: row.schedule_fee ?? undefined,
         benefit75: row.benefit_75 ?? undefined,
@@ -317,7 +331,11 @@ export class MbsDataService {
       LIMIT $${paramIndex + 1} OFFSET $${paramIndex + 2}
     `;
     
-    params.push(JSON.stringify(queryEmbedding), limit, offset);
+    // Validate and sanitize limit and offset values
+    const validatedLimit = Math.max(1, Math.min(1000, limit));
+    const validatedOffset = Math.max(0, offset);
+    
+    params.push(JSON.stringify(queryEmbedding), validatedLimit, validatedOffset);
 
     const searchResults = await this.db.$queryRawUnsafe<Array<{
       id: number;
@@ -344,7 +362,7 @@ export class MbsDataService {
         description: row.description,
         shortDescription: row.short_description ?? undefined,
         category: row.category ?? undefined,
-        providerType: row.provider_type ?? undefined,
+        providerType: toProviderType(row.provider_type),
         serviceType: row.service_type ?? undefined,
         scheduleFee: row.schedule_fee ?? undefined,
         benefit75: row.benefit_75 ?? undefined,
