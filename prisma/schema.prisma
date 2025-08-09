@@ -322,7 +322,12 @@ model MbsItem {
   itemStartDate         DateTime? @map("item_start_date") @db.Date
   itemEndDate           DateTime? @map("item_end_date") @db.Date
   
-  // Metadata (tsv and embedding handled via raw SQL)
+  // Search and AI fields (managed via raw SQL)
+  // Note: tsv is TSVECTOR type, embedding is JSONB for OpenAI embeddings
+  tsv                   String?   @map("tsv") // Will be TSVECTOR in actual DB
+  embedding             Json?     @map("embedding") // JSONB for vector storage
+  
+  // Metadata
   rawXmlData            Json?     @map("raw_xml_data")
   lastUpdated           DateTime  @default(now()) @map("last_updated") @db.Timestamptz(6)
   createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)

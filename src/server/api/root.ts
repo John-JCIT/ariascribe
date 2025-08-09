@@ -5,6 +5,7 @@ import { polarRouter } from "./routers/polar";
 import { authRouter } from "./routers/auth";
 import { adminRouter } from "./routers/admin";
 import { mbsAdminRouter } from "./routers/mbs-admin";
+import { mbsPublicRouter } from "./routers/mbs-public";
 
 export const appRouter = createTRPCRouter({
   user: userRouter,
@@ -13,6 +14,7 @@ export const appRouter = createTRPCRouter({
   auth: authRouter,
   admin: adminRouter,
   mbsAdmin: mbsAdminRouter,
+  mbs: mbsPublicRouter,
 });
 
 export type AppRouter = typeof appRouter;
