@@ -359,7 +359,7 @@ export class MbsWorkerService {
       derivedFeeDescription: getFirst(xmlItem.DerivedFee),
       itemStartDate: getFirstAsDate(xmlItem.ItemStartDate),
       itemEndDate: getFirstAsDate(xmlItem.ItemEndDate),
-      isActive: !xmlItem.ItemEndDate || getFirstAsDate(xmlItem.ItemEndDate)! > new Date(),
+      isActive: !getFirstAsDate(xmlItem.ItemEndDate) || getFirstAsDate(xmlItem.ItemEndDate)! > new Date(),
       rawXmlData: xmlItem, // Store original XML for debugging
     };
   }

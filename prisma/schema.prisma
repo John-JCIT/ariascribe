@@ -324,7 +324,7 @@ model MbsItem {
 
   // Search and AI fields (managed via raw SQL)
   // Note: tsv is TSVECTOR type, embedding is JSONB for OpenAI embeddings
-  tsv       Unsupported("tsvector")? @map("tsv") @ignore // PostgreSQL TSVECTOR for full-text search
+  tsv       Unsupported("tsvector")? @map("tsv") // PostgreSQL TSVECTOR for full-text search
   embedding Json?                    @map("embedding") // JSONB for vector storage
 
   // Metadata
