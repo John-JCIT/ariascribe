@@ -9,9 +9,10 @@ const MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024; // 100MB
 
 export interface MbsXmlItem {
   ItemNum: string[];
-  Descriptor: string[];
+  Description: string[];  // Changed from Descriptor to Description to match actual XML
   Category: string[];
   SubCategory?: string[];
+  SubHeading?: string[];  // Additional sub-category field in XML
   Group?: string[];
   SubGroup?: string[];
   ProviderType?: string[];
@@ -21,10 +22,14 @@ export interface MbsXmlItem {
   Benefit85?: string[];
   Benefit100?: string[];
   HasAnaesthetic?: string[];
-  AnaestheticBasicUnits?: string[];
+  BasicUnits?: string[];  // Actual field name for anaesthetic basic units
+  AnaestheticBasicUnits?: string[];  // Keep for backward compatibility
   DerivedFee?: string[];
   ItemStartDate?: string[];
   ItemEndDate?: string[];
+  ItemType?: string[];  // Item type classification
+  BenefitType?: string[];  // Benefit type
+  NewItem?: string[];  // Whether it's a new item
   LastUpdated?: string[];
 }
 
@@ -342,10 +347,10 @@ export class MbsWorkerService {
 
     return {
       itemNumber: getFirstAsInt(xmlItem.ItemNum),
-      description: getFirst(xmlItem.Descriptor) ?? '', // Use 'Descriptor' as defined in interface
-      shortDescription: getFirst(xmlItem.Descriptor)?.substring(0, 255) ?? '', // Truncate for short description
+      description: getFirst(xmlItem.Description) ?? '', // Use 'Description' as it appears in actual XML
+      shortDescription: getFirst(xmlItem.Description)?.substring(0, 255) ?? '', // Truncate for short description
       category: getFirst(xmlItem.Category),
-      subCategory: getFirst(xmlItem.SubCategory),
+      subCategory: getFirst(xmlItem.SubCategory) || getFirst(xmlItem.SubHeading), // Use SubHeading if SubCategory not available
       groupName: getFirst(xmlItem.Group),
       subGroup: getFirst(xmlItem.SubGroup),
       providerType: getFirst(xmlItem.ProviderType),
@@ -355,11 +360,12 @@ export class MbsWorkerService {
       benefit85: getFirstAsNumber(xmlItem.Benefit85),
       benefit100: getFirstAsNumber(xmlItem.Benefit100),
       hasAnaesthetic: getFirstAsBoolean(xmlItem.HasAnaesthetic),
-      anaestheticBasicUnits: getFirstAsInt(xmlItem.AnaestheticBasicUnits), // Use property defined in interface
+      anaestheticBasicUnits: getFirstAsInt(xmlItem.BasicUnits) || getFirstAsInt(xmlItem.AnaestheticBasicUnits), // Use BasicUnits (actual field) or fallback
       derivedFeeDescription: getFirst(xmlItem.DerivedFee),
       itemStartDate: getFirstAsDate(xmlItem.ItemStartDate),
       itemEndDate: getFirstAsDate(xmlItem.ItemEndDate),
       isActive: !getFirstAsDate(xmlItem.ItemEndDate) || getFirstAsDate(xmlItem.ItemEndDate)! > new Date(),
+      isNewItem: getFirstAsBoolean(xmlItem.NewItem), // Map new item flag
       rawXmlData: xmlItem, // Store original XML for debugging
     };
   }

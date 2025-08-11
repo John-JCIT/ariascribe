@@ -25,36 +25,57 @@ function MbsErrorFallback({ error, resetErrorBoundary }: MbsErrorFallbackProps) 
 
   return (
     <div className="flex items-center justify-center min-h-[400px]">
-      <div className="flex flex-col items-center space-y-4 text-center max-w-md">
-        <AlertTriangle className="h-12 w-12 text-red-500" />
-        <h2 className="text-xl font-semibold">MBS Dashboard Error</h2>
-        <p className="text-muted-foreground">
-          The MBS billing assistant encountered an unexpected error and couldn't load properly.
+      <div 
+        className="flex flex-col items-center space-y-4 text-center max-w-md"
+        role="alert"
+        aria-labelledby="error-title"
+        aria-describedby="error-description"
+      >
+        <AlertTriangle 
+          className="h-12 w-12 text-red-500" 
+          aria-hidden="true"
+        />
+        <h2 
+          id="error-title"
+          className="text-xl font-semibold"
+        >
+          MBS Dashboard Error
+        </h2>
+        <p 
+          id="error-description"
+          className="text-muted-foreground"
+        >
+          The MBS billing assistant encountered an unexpected error and couldn&apos;t load properly.
         </p>
         
         {/* Show error details in development */}
         {process.env.NODE_ENV === 'development' && (
           <details className="text-sm text-left bg-muted p-3 rounded-md w-full">
             <summary className="cursor-pointer font-medium mb-2">Error Details</summary>
-            <pre className="text-xs overflow-auto whitespace-pre-wrap">
+            <pre 
+              className="text-xs overflow-auto whitespace-pre-wrap"
+              aria-live="assertive"
+              aria-label="Error details and stack trace"
+            >
               {error.message}
               {error.stack && `\n\nStack trace:\n${error.stack}`}
             </pre>
           </details>
         )}
         
-        <div className="flex gap-2">
+        <div className="flex gap-2" role="group" aria-label="Error recovery actions">
           <CustomButton 
             onClick={resetErrorBoundary}
             variant="outline"
             leftIcon={RefreshCw}
+            aria-label="Try to reload the MBS dashboard"
           >
             Try Again
           </CustomButton>
           <CustomButton 
             onClick={handleContactSupport}
-            variant="default"
             leftIcon={Mail}
+            aria-label="Contact support team about this error"
           >
             Contact Support
           </CustomButton>

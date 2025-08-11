@@ -33,6 +33,24 @@ const itemNumberSchema = z.object({
   itemNumber: z.number().int().min(1, 'Item number must be positive'),
 });
 
+const enhancedSearchInputSchema = z.object({
+  query: z.string().min(1, 'Query cannot be empty'),
+  searchType: z.enum(['text', 'semantic', 'hybrid']).optional().default('text'),
+  intent: z.enum(['exact_item_number', 'item_number_text', 'text_search']).optional(),
+  itemNumber: z.number().int().positive().optional(),
+  textQuery: z.string().optional(),
+  filters: z.object({
+    providerType: z.enum(['G', 'S', 'AD', 'ALL']).optional(),
+    category: z.string().optional(),
+    includeInactive: z.boolean().optional().default(false),
+    minFee: z.number().min(0).optional(),
+    maxFee: z.number().min(0).optional(),
+  }).optional().default({}),
+  limit: z.number().min(1).max(100).optional().default(20),
+  offset: z.number().min(0).optional().default(0),
+  sortBy: z.enum(['relevance', 'fee_asc', 'fee_desc', 'item_number']).optional().default('relevance'),
+});
+
 export const mbsPublicRouter = createTRPCRouter({
   /**
    * Search MBS items
@@ -77,6 +95,53 @@ export const mbsPublicRouter = createTRPCRouter({
         throw new TRPCError({
           code: 'INTERNAL_SERVER_ERROR',
           message: error instanceof Error ? error.message : 'Search failed',
+        });
+      }
+    }),
+
+  /**
+   * Enhanced smart search with sectioned results
+   * Provides intelligent search with exact matches and related items
+   */
+  smartSearch: publicProcedure
+    .input(enhancedSearchInputSchema)
+    .query(async ({ input, ctx }) => {
+      try {
+        const searchService = createMbsSearchService(ctx.db as unknown as PrismaClient);
+        
+        // Check if OpenAI is available and normalize search type if needed
+        const openaiApiKey = process.env.OPENAI_API_KEY;
+        const isOpenAIAvailable = !!openaiApiKey;
+        
+        // Override search type to 'text' if OpenAI is unavailable and semantic/hybrid was requested
+        const normalizedInput = { ...input };
+        if (!isOpenAIAvailable && (input.searchType === 'semantic' || input.searchType === 'hybrid')) {
+          normalizedInput.searchType = 'text';
+          console.log(`OpenAI unavailable: normalized search type from '${input.searchType}' to 'text'`);
+        }
+        
+        // Validate fee range
+        if (input.filters?.minFee !== undefined && 
+            input.filters?.maxFee !== undefined && 
+            input.filters.minFee > input.filters.maxFee) {
+          throw new TRPCError({
+            code: 'BAD_REQUEST',
+            message: 'Minimum fee cannot be greater than maximum fee',
+          });
+        }
+
+        const result = await searchService.smartSearch(normalizedInput);
+        return result;
+      } catch (error) {
+        console.error('MBS smart search error:', error);
+        
+        if (error instanceof TRPCError) {
+          throw error;
+        }
+
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: error instanceof Error ? error.message : 'Smart search failed',
         });
       }
     }),

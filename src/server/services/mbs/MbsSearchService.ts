@@ -8,7 +8,11 @@ import type {
   SearchType,
   MbsItemSummary,
   SearchFilters,
-  SortOrder
+  SortOrder,
+  EnhancedSearchRequest,
+  SectionedSearchResponse,
+  EnhancedSearchType,
+  SearchIntent
 } from "./types";
 
 interface CombinedSearchResult {
@@ -318,5 +322,223 @@ export class MbsSearchService {
    */
   async getHealthStats() {
     return this.dataService.getHealthStats();
+  }
+
+  /**
+   * Enhanced smart search with sectioned results
+   * Handles different search intents and provides structured responses
+   */
+  async smartSearch(request: EnhancedSearchRequest): Promise<SectionedSearchResponse> {
+    const startTime = Date.now();
+    const { query, intent, itemNumber, textQuery, filters = {}, limit = 15, offset = 0 } = request;
+
+    let exactMatches: SearchResult[] = [];
+    let relatedMatches: SearchResult[] = [];
+    let total = 0;
+
+    try {
+      // Handle exact item number search
+      if (intent === 'exact_item_number' && itemNumber) {
+        const exactResult = await this.searchExactItemNumber(itemNumber, filters);
+        if (exactResult) {
+          exactMatches = [exactResult];
+          total = 1;
+        }
+        
+        // Also get related items (items with similar numbers)
+        const relatedResults = await this.searchRelatedItemNumbers(itemNumber, filters, limit - 1);
+        relatedMatches = relatedResults.results;
+        total += relatedResults.total;
+      }
+      
+      // Handle item number + text search
+      else if (intent === 'item_number_text' && itemNumber) {
+        // First, try to get the exact item and see if it matches the text query
+        const exactResult = await this.searchExactItemNumber(itemNumber, filters);
+        if (exactResult && textQuery) {
+          const textRelevance = this.calculateTextRelevance(exactResult.description, textQuery);
+          if (textRelevance > 0.3) { // Threshold for text relevance
+            exactResult.relevanceScore = 1.0; // Boost exact item match
+            exactResult.matchType = 'exact';
+            exactMatches = [exactResult];
+          }
+        }
+        
+        // Get related items based on text query
+        const textResults = await this.search({
+          query: textQuery || query,
+          searchType: 'text',
+          filters,
+          limit: limit - exactMatches.length,
+          offset
+        });
+        
+        relatedMatches = textResults.results.map(result => ({
+          ...result,
+          matchType: 'text' as const
+        }));
+        
+        total = exactMatches.length + textResults.total;
+      }
+      
+      // Handle pure text search (fallback to existing behavior)
+      else {
+        const textResults = await this.search(request);
+        relatedMatches = textResults.results.map(result => ({
+          ...result,
+          matchType: 'text' as const
+        }));
+        total = textResults.total;
+      }
+
+      const processingTimeMs = Date.now() - startTime;
+
+      return {
+        exactMatches,
+        relatedMatches,
+        total,
+        hasMore: total > (offset + limit),
+        searchType: 'weighted_hybrid',
+        query,
+        intent,
+        processingTimeMs
+      };
+
+    } catch (error) {
+      console.error('Smart search error:', error);
+      // Fallback to regular search
+      const fallbackResults = await this.search(request);
+      return {
+        exactMatches: [],
+        relatedMatches: fallbackResults.results,
+        total: fallbackResults.total,
+        hasMore: fallbackResults.hasMore,
+        searchType: 'text',
+        query,
+        intent,
+        processingTimeMs: Date.now() - startTime
+      };
+    }
+  }
+
+  /**
+   * Search for exact item number match
+   */
+  private async searchExactItemNumber(itemNumber: number, filters: SearchFilters): Promise<SearchResult | null> {
+    const item = await this.dataService.getItemByNumber(itemNumber);
+    
+    if (!item) return null;
+    
+    // Apply filters
+    if (filters.providerType && filters.providerType !== 'ALL' && item.providerType !== filters.providerType) {
+      return null;
+    }
+    
+    if (filters.category && item.category !== filters.category) {
+      return null;
+    }
+    
+    if (!filters.includeInactive && !item.isActive) {
+      return null;
+    }
+    
+    if (filters.minFee !== undefined && (!item.scheduleFee || Number(item.scheduleFee) < filters.minFee)) {
+      return null;
+    }
+    
+    if (filters.maxFee !== undefined && (!item.scheduleFee || Number(item.scheduleFee) > filters.maxFee)) {
+      return null;
+    }
+
+    return {
+      ...item,
+      relevanceScore: 1.0, // Perfect match
+      searchType: 'exact_item' as SearchType,
+      highlightedDescription: item.description,
+      matchType: 'exact'
+    };
+  }
+
+  /**
+   * Search for related item numbers (partial matches)
+   */
+  private async searchRelatedItemNumbers(itemNumber: number, filters: SearchFilters, limit: number): Promise<{ results: SearchResult[]; total: number }> {
+    const itemNumberStr = itemNumber.toString();
+    
+    // Search for items that start with the same digits or contain the number
+    const { results, total } = await this.dataService.performTextSearch({
+      query: itemNumberStr,
+      filters,
+      limit,
+      offset: 0,
+      sortBy: 'item_number'
+    });
+
+    // Filter out the exact match and score based on similarity
+    const relatedResults: SearchResult[] = results
+      .filter(result => result.item.itemNumber !== itemNumber)
+      .map(result => {
+        const similarity = this.calculateItemNumberSimilarity(itemNumber, result.item.itemNumber);
+        return {
+          ...result.item,
+          relevanceScore: similarity,
+          searchType: 'text' as SearchType,
+          highlightedDescription: result.item.description,
+          matchType: similarity > 0.7 ? 'partial' as const : 'text' as const
+        };
+      })
+      .sort((a, b) => b.relevanceScore - a.relevanceScore);
+
+    return {
+      results: relatedResults,
+      total: Math.max(0, total - 1) // Subtract 1 for the exact match we filtered out
+    };
+  }
+
+  /**
+   * Calculate similarity between item numbers
+   */
+  private calculateItemNumberSimilarity(target: number, candidate: number): number {
+    const targetStr = target.toString();
+    const candidateStr = candidate.toString();
+    
+    // Exact prefix match gets highest score
+    if (candidateStr.startsWith(targetStr)) {
+      return 0.9;
+    }
+    
+    // Contains the number gets medium score
+    if (candidateStr.includes(targetStr)) {
+      return 0.6;
+    }
+    
+    // Suffix match gets lower score
+    if (candidateStr.endsWith(targetStr)) {
+      return 0.4;
+    }
+    
+    return 0.1; // Very low relevance
+  }
+
+  /**
+   * Calculate text relevance score between description and query
+   */
+  private calculateTextRelevance(description: string, query: string): number {
+    if (!description || !query) return 0;
+    
+    const descLower = description.toLowerCase();
+    const queryLower = query.toLowerCase();
+    const queryWords = queryLower.split(/\s+/);
+    
+    let matches = 0;
+    let totalWords = queryWords.length;
+    
+    for (const word of queryWords) {
+      if (word.length > 2 && descLower.includes(word)) {
+        matches++;
+      }
+    }
+    
+    return totalWords > 0 ? matches / totalWords : 0;
   }
 }
