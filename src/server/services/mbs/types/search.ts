@@ -3,7 +3,7 @@
  */
 
 export type SearchType = 'text' | 'semantic' | 'hybrid';
-export type EnhancedSearchType = 'exact_item' | 'weighted_hybrid' | 'text' | 'semantic';
+export type EnhancedSearchType = SearchType | 'exact_item' | 'weighted_hybrid';
 export type ProviderType = 'G' | 'S' | 'AD' | 'ALL'; // GP, Specialist, Dental, All
 export type SortOrder = 'relevance' | 'fee_asc' | 'fee_desc' | 'item_number';
 
@@ -27,11 +27,11 @@ export interface SearchRequest {
   sortBy?: SortOrder;
 }
 
-export interface EnhancedSearchRequest extends SearchRequest {
+export interface EnhancedSearchRequest extends Omit<SearchRequest, 'searchType'> {
+  searchType?: EnhancedSearchType;
   intent?: SearchIntent;
   itemNumber?: number;
   textQuery?: string;
-  enhancedSearchType?: EnhancedSearchType;
 }
 
 export interface MbsItemSummary {
@@ -73,7 +73,7 @@ export interface SectionedSearchResponse {
   relatedMatches: SearchResult[];
   total: number;
   hasMore: boolean;
-  searchType: SearchType | EnhancedSearchType;
+  searchType: EnhancedSearchType;
   query: string;
   intent?: SearchIntent;
   processingTimeMs: number;

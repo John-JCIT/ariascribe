@@ -330,7 +330,7 @@ export class MbsSearchService {
    */
   async smartSearch(request: EnhancedSearchRequest): Promise<SectionedSearchResponse> {
     const startTime = Date.now();
-    const { query, intent, itemNumber, textQuery, filters = {}, limit = 15, offset = 0 } = request;
+    const { query, searchType = 'weighted_hybrid', intent, itemNumber, textQuery, filters = {}, limit = 15, offset = 0 } = request;
 
     let exactMatches: SearchResult[] = [];
     let relatedMatches: SearchResult[] = [];
@@ -383,7 +383,14 @@ export class MbsSearchService {
       
       // Handle pure text search (fallback to existing behavior)
       else {
-        const textResults = await this.search(request);
+        const searchRequest: SearchRequest = {
+          query,
+          searchType: searchType === 'exact_item' || searchType === 'weighted_hybrid' ? 'text' : searchType,
+          filters,
+          limit,
+          offset
+        };
+        const textResults = await this.search(searchRequest);
         relatedMatches = textResults.results.map(result => ({
           ...result,
           matchType: 'text' as const
@@ -398,7 +405,7 @@ export class MbsSearchService {
         relatedMatches,
         total,
         hasMore: total > (offset + limit),
-        searchType: 'weighted_hybrid',
+        searchType,
         query,
         intent,
         processingTimeMs
@@ -407,7 +414,14 @@ export class MbsSearchService {
     } catch (error) {
       console.error('Smart search error:', error);
       // Fallback to regular search
-      const fallbackResults = await this.search(request);
+      const fallbackRequest: SearchRequest = {
+        query,
+        searchType: searchType === 'exact_item' || searchType === 'weighted_hybrid' ? 'text' : searchType,
+        filters,
+        limit,
+        offset
+      };
+      const fallbackResults = await this.search(fallbackRequest);
       return {
         exactMatches: [],
         relatedMatches: fallbackResults.results,

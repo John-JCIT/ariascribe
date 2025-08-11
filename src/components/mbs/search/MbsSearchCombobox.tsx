@@ -8,8 +8,8 @@ import { Search, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react';
 import { useDebounce } from '@/hooks/useDebounce';
 import { api } from '@/trpc/react';
 import { cn } from '@/lib/utils';
-import type { ProviderType } from '@/server/services/mbs/types/search';
-import { parseSearchQuery, type SearchIntent } from '@/utils/searchQueryParser';
+import type { ProviderType, SectionedSearchResponse } from '@/server/services/mbs/types/search';
+import { parseSearchQuery } from '@/utils/searchQueryParser';
 
 interface MbsSearchComboboxProps {
   onItemSelect?: (item: MbsSearchResult) => void;
@@ -33,10 +33,28 @@ interface MbsSearchResult {
   isActive: boolean;
 }
 
+// Helper functions moved to module scope to avoid recreation on every render
+const formatCurrency = (amount: number | null) => {
+  if (amount == null) return 'N/A';
+  return new Intl.NumberFormat('en-AU', {
+    style: 'currency',
+    currency: 'AUD',
+  }).format(amount);
+};
+
+const getProviderTypeLabel = (type: ProviderType | undefined) => {
+  switch (type) {
+    case 'G': return 'GP';
+    case 'S': return 'Specialist';
+    case 'AD': return 'Dental';
+    case 'ALL': return 'Any';
+    default: return 'Any';
+  }
+};
+
 // Component for individual search result item
 function SearchResultItem({
   item,
-  index,
   isActive,
   onSelect,
   onClose,
@@ -45,7 +63,6 @@ function SearchResultItem({
   isExactMatch
 }: {
   item: MbsSearchResult;
-  index: number;
   isActive: boolean;
   onSelect: (item: MbsSearchResult) => void;
   onClose: () => void;
@@ -53,24 +70,6 @@ function SearchResultItem({
   comboboxId: string;
   isExactMatch: boolean;
 }) {
-  const formatCurrency = (amount: number | null) => {
-    if (amount == null) return 'N/A';
-    return new Intl.NumberFormat('en-AU', {
-      style: 'currency',
-      currency: 'AUD',
-    }).format(amount);
-  };
-
-  const getProviderTypeLabel = (type: ProviderType | undefined) => {
-    switch (type) {
-      case 'G': return 'GP';
-      case 'S': return 'Specialist';
-      case 'AD': return 'Dental';
-      case 'ALL': return 'Any';
-      default: return 'Any';
-    }
-  };
-
   return (
     <div
       id={`${comboboxId}-option-${item.itemNumber}`}
@@ -149,7 +148,7 @@ function ExpandableDescription({
   const [isExpanded, setIsExpanded] = useState(false);
   
   // Use shortDescription if available, otherwise truncate fullDescription
-  const displayText = shortDescription?.trim() || fullDescription?.trim();
+  const displayText = shortDescription?.trim() ?? fullDescription?.trim();
   if (!displayText) return <span className="text-gray-500">No description available</span>;
   
   const shouldShowExpand = fullDescription && shortDescription && fullDescription.length > shortDescription.length;
@@ -179,7 +178,7 @@ function ExpandableDescription({
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation(); // Prevent item selection
-            console.log('Expand button clicked, current state:', isExpanded); // Debug log
+
             setIsExpanded(!isExpanded);
           }}
           onMouseDown={(e) => {
@@ -232,7 +231,8 @@ export function MbsSearchCombobox({
   const inputRef = useRef<HTMLInputElement>(null);
   const listboxRef = useRef<HTMLDivElement>(null);
 
-  const { data: searchResults, isLoading, error } = api.mbs.smartSearch.useQuery(
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+  const queryResult = api.mbs.smartSearch.useQuery(
     {
       query: debouncedQuery,
       limit: 15,
@@ -252,6 +252,11 @@ export function MbsSearchCombobox({
     }
   );
 
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+  const { data, isLoading, error } = queryResult;
+  // Type assertion to help TypeScript understand the correct return type
+  const typedSearchResults = data as SectionedSearchResponse | undefined;
+
   const handleItemSelect = useCallback((item: MbsSearchResult) => {
     setShowResults(false);
     setQuery('');
@@ -262,12 +267,14 @@ export function MbsSearchCombobox({
   // Reset active option when results change
   useEffect(() => {
     setActiveOptionIndex(-1);
-  }, [searchResults]);
+  }, [typedSearchResults]);
 
   // Handle keyboard navigation
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    const exactMatches = searchResults?.exactMatches ?? [];
-    const relatedMatches = searchResults?.relatedMatches ?? [];
+    if (!typedSearchResults || error) return;
+    
+    const exactMatches = typedSearchResults.exactMatches ?? [];
+    const relatedMatches = typedSearchResults.relatedMatches ?? [];
     const allResults = [...exactMatches, ...relatedMatches];
     
     switch (e.key) {
@@ -310,7 +317,7 @@ export function MbsSearchCombobox({
         setActiveOptionIndex(-1);
         break;
     }
-  }, [searchResults, showResults, query.length, activeOptionIndex, handleItemSelect]);
+  }, [typedSearchResults, showResults, query.length, activeOptionIndex, handleItemSelect, error]);
 
 
 
@@ -345,10 +352,10 @@ export function MbsSearchCombobox({
           aria-controls={showResults && debouncedQuery.length >= 2 ? listboxId : undefined}
           aria-autocomplete="list"
           aria-activedescendant={
-            activeOptionIndex >= 0 && searchResults
+            activeOptionIndex >= 0 && typedSearchResults && !error
               ? (() => {
-                  const exactMatches = searchResults.exactMatches ?? [];
-                  const relatedMatches = searchResults.relatedMatches ?? [];
+                  const exactMatches = typedSearchResults.exactMatches ?? [];
+                  const relatedMatches = typedSearchResults.relatedMatches ?? [];
                   const allResults = [...exactMatches, ...relatedMatches];
                   return allResults[activeOptionIndex]
                     ? `${comboboxId}-option-${allResults[activeOptionIndex].itemNumber}`
@@ -394,18 +401,18 @@ export function MbsSearchCombobox({
               </div>
             )}
 
-            {debouncedQuery.length >= 2 && !isLoading && 
-             (searchResults?.exactMatches?.length === 0 && searchResults?.relatedMatches?.length === 0) && (
+            {debouncedQuery.length >= 2 && !isLoading && !error &&
+             (typedSearchResults?.exactMatches?.length === 0 && typedSearchResults?.relatedMatches?.length === 0) && (
               <div className="p-4 text-center text-muted-foreground">
                 <p className="text-sm">No MBS items found for &ldquo;{debouncedQuery}&rdquo;</p>
               </div>
             )}
 
-            {(searchResults?.exactMatches && searchResults.exactMatches.length > 0) ||
-             (searchResults?.relatedMatches && searchResults.relatedMatches.length > 0) ? (
+            {!error && ((typedSearchResults?.exactMatches && typedSearchResults.exactMatches.length > 0) ||
+             (typedSearchResults?.relatedMatches && typedSearchResults.relatedMatches.length > 0)) ? (
               <div className="p-1 space-y-1">
                 {/* Exact Matches Section */}
-                {searchResults.exactMatches && searchResults.exactMatches.length > 0 && (
+                {typedSearchResults?.exactMatches && typedSearchResults.exactMatches.length > 0 && (
                   <div>
                     <div className="px-2 py-1 text-xs font-medium text-green-700 bg-green-50 border-b border-green-100">
                       <div className="flex items-center gap-1">
@@ -413,11 +420,10 @@ export function MbsSearchCombobox({
                         Exact Match
                       </div>
                     </div>
-                    {searchResults.exactMatches.map((item, index) => (
+                    {typedSearchResults.exactMatches?.map((item, index) => (
                       <SearchResultItem
                         key={`exact-${item.itemNumber}`}
                         item={item}
-                        index={index}
                         isActive={index === activeOptionIndex}
                         onSelect={handleItemSelect}
                         onClose={() => setShowResults(false)}
@@ -430,9 +436,9 @@ export function MbsSearchCombobox({
                 )}
 
                 {/* Related Matches Section */}
-                {searchResults.relatedMatches && searchResults.relatedMatches.length > 0 && (
+                {typedSearchResults?.relatedMatches && typedSearchResults.relatedMatches.length > 0 && (
                   <div>
-                    {searchResults.exactMatches && searchResults.exactMatches.length > 0 && (
+                    {typedSearchResults?.exactMatches && typedSearchResults.exactMatches.length > 0 && (
                       <div className="px-2 py-1 text-xs font-medium text-blue-700 bg-blue-50 border-b border-blue-100">
                         <div className="flex items-center gap-1">
                           <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
@@ -440,13 +446,12 @@ export function MbsSearchCombobox({
                         </div>
                       </div>
                     )}
-                    {searchResults.relatedMatches.map((item, index) => {
-                      const adjustedIndex = (searchResults.exactMatches?.length || 0) + index;
+                    {typedSearchResults.relatedMatches?.map((item, index) => {
+                      const adjustedIndex = (typedSearchResults.exactMatches?.length ?? 0) + index;
                       return (
                         <SearchResultItem
                           key={`related-${item.itemNumber}`}
                           item={item}
-                          index={adjustedIndex}
                           isActive={adjustedIndex === activeOptionIndex}
                           onSelect={handleItemSelect}
                           onClose={() => setShowResults(false)}
