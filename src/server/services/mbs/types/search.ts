@@ -54,7 +54,7 @@ export interface MbsItemSummary {
 
 export interface SearchResult extends MbsItemSummary {
   relevanceScore: number;
-  searchType: SearchType;
+  searchType: EnhancedSearchType;
   highlightedDescription?: string;
   matchType?: 'exact' | 'partial' | 'text'; // Type of match for result categorization
 }
@@ -63,7 +63,7 @@ export interface SearchResponse {
   results: SearchResult[];
   total: number;
   hasMore: boolean;
-  searchType: SearchType;
+  searchType: EnhancedSearchType;
   query: string;
   processingTimeMs: number;
 }

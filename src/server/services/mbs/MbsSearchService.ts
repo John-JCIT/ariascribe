@@ -20,7 +20,7 @@ interface CombinedSearchResult {
   textRank?: number;
   semanticSimilarity?: number;
   finalScore: number;
-  searchType: SearchType;
+  searchType: EnhancedSearchType;
 }
 
 /**
@@ -149,7 +149,7 @@ export class MbsSearchService {
     const results: SearchResult[] = textResults.map(result => ({
       ...result.item,
       relevanceScore: result.rank,
-      searchType: 'text' as SearchType,
+      searchType: 'text' as EnhancedSearchType,
       // TODO: Add highlighting in future iteration
       highlightedDescription: result.item.description,
     }));
@@ -182,7 +182,7 @@ export class MbsSearchService {
     const results: SearchResult[] = semanticResults.map(result => ({
       ...result.item,
       relevanceScore: result.similarity,
-      searchType: 'semantic' as SearchType,
+      searchType: 'semantic' as EnhancedSearchType,
       highlightedDescription: result.item.description,
     }));
 
@@ -237,7 +237,7 @@ export class MbsSearchService {
     const results: SearchResult[] = paginatedResults.map(result => ({
       ...result.item,
       relevanceScore: result.finalScore,
-      searchType: 'hybrid' as SearchType,
+      searchType: 'hybrid' as EnhancedSearchType,
       highlightedDescription: result.item.description,
     }));
 
@@ -262,7 +262,7 @@ export class MbsSearchService {
         item: result.item,
         textRank: result.rank,
         finalScore: result.rank * 0.6, // Text search gets 60% weight initially
-        searchType: 'text' as SearchType,
+        searchType: 'text' as EnhancedSearchType,
       });
     });
 
@@ -273,14 +273,14 @@ export class MbsSearchService {
         // Item found in both searches - boost the score
         existing.semanticSimilarity = result.similarity;
         existing.finalScore = (existing.textRank! * 0.4) + (result.similarity * 0.6) + 0.2; // Bonus for being in both
-        existing.searchType = 'hybrid' as SearchType;
+        existing.searchType = 'hybrid' as EnhancedSearchType;
       } else {
         // Item only found in semantic search
         resultMap.set(result.item.id, {
           item: result.item,
           semanticSimilarity: result.similarity,
           finalScore: result.similarity * 0.8, // Slightly lower weight for semantic-only
-          searchType: 'semantic' as SearchType,
+          searchType: 'semantic' as EnhancedSearchType,
         });
       }
     });
@@ -332,6 +332,10 @@ export class MbsSearchService {
     const startTime = Date.now();
     const { query, searchType = 'weighted_hybrid', intent, itemNumber, textQuery, filters = {}, limit = 15, offset = 0 } = request;
 
+    // Validate and clamp inputs for robustness
+    const safeLimit = Math.max(1, Math.min(limit ?? 15, 100));
+    const safeOffset = Math.max(0, offset ?? 0);
+
     let exactMatches: SearchResult[] = [];
     let relatedMatches: SearchResult[] = [];
     let total = 0;
@@ -346,7 +350,7 @@ export class MbsSearchService {
         }
         
         // Also get related items (items with similar numbers)
-        const relatedResults = await this.searchRelatedItemNumbers(itemNumber, filters, limit - 1);
+        const relatedResults = await this.searchRelatedItemNumbers(itemNumber, filters, safeLimit - 1);
         relatedMatches = relatedResults.results;
         total += relatedResults.total;
       }
@@ -366,11 +370,11 @@ export class MbsSearchService {
         
         // Get related items based on text query
         const textResults = await this.search({
-          query: textQuery || query,
+          query: textQuery ?? query,
           searchType: 'text',
           filters,
-          limit: limit - exactMatches.length,
-          offset
+          limit: safeLimit - exactMatches.length,
+          offset: safeOffset
         });
         
         relatedMatches = textResults.results.map(result => ({
@@ -387,8 +391,8 @@ export class MbsSearchService {
           query,
           searchType: searchType === 'exact_item' || searchType === 'weighted_hybrid' ? 'text' : searchType,
           filters,
-          limit,
-          offset
+          limit: safeLimit,
+          offset: safeOffset
         };
         const textResults = await this.search(searchRequest);
         relatedMatches = textResults.results.map(result => ({
@@ -404,7 +408,7 @@ export class MbsSearchService {
         exactMatches,
         relatedMatches,
         total,
-        hasMore: total > (offset + limit),
+        hasMore: total > (safeOffset + safeLimit),
         searchType,
         query,
         intent,
@@ -418,8 +422,8 @@ export class MbsSearchService {
         query,
         searchType: searchType === 'exact_item' || searchType === 'weighted_hybrid' ? 'text' : searchType,
         filters,
-        limit,
-        offset
+        limit: safeLimit,
+        offset: safeOffset
       };
       const fallbackResults = await this.search(fallbackRequest);
       return {
@@ -467,7 +471,7 @@ export class MbsSearchService {
     return {
       ...item,
       relevanceScore: 1.0, // Perfect match
-      searchType: 'exact_item' as SearchType,
+      searchType: 'exact_item' as EnhancedSearchType,
       highlightedDescription: item.description,
       matchType: 'exact'
     };
@@ -496,7 +500,7 @@ export class MbsSearchService {
         return {
           ...result.item,
           relevanceScore: similarity,
-          searchType: 'text' as SearchType,
+          searchType: 'text' as EnhancedSearchType,
           highlightedDescription: result.item.description,
           matchType: similarity > 0.7 ? 'partial' as const : 'text' as const
         };
@@ -545,7 +549,7 @@ export class MbsSearchService {
     const queryWords = queryLower.split(/\s+/);
     
     let matches = 0;
-    let totalWords = queryWords.length;
+    const totalWords = queryWords.length;
     
     for (const word of queryWords) {
       if (word.length > 2 && descLower.includes(word)) {
